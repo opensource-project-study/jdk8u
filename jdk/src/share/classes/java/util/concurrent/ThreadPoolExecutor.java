@@ -379,10 +379,26 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * below).
      */
     private final AtomicInteger ctl = new AtomicInteger(ctlOf(RUNNING, 0));
+    // 29
     private static final int COUNT_BITS = Integer.SIZE - 3;
+    // 2 ^ 29 - 1
+    // 二进制位 0001 1111 1111 1111 1111 1111 1111 1111
     private static final int CAPACITY   = (1 << COUNT_BITS) - 1;
 
     // runState is stored in the high-order bits
+    //  1的原码 0000 0000 0000 0000 0000 0000 0000 0001
+    // -1的原码 1000 0000 0000 0000 0000 0000 0000 0001
+    // 补码的计算规则：原码除了符号位外，其余位取反，然后加1
+    // -1的原码除符号位外取反
+    //         1111 1111 1111 1111 1111 1111 1111 1110
+    // 再加1                                          1
+    // -1的补码 1111 1111 1111 1111 1111 1111 1111 1111
+    // 左移29位 1110 0000 0000 0000 0000 0000 0000 0000
+    //0左移29位 0000 0000 0000 0000 0000 0000 0000 0000
+    //1左移29位 0010 0000 0000 0000 0000 0000 0000 0000
+    //2左移29位 0100 0000 0000 0000 0000 0000 0000 0000
+    //3左移29位 0110 0000 0000 0000 0000 0000 0000 0000
+    //综上，runState存储在ctl低址的前3位
     private static final int RUNNING    = -1 << COUNT_BITS;
     private static final int SHUTDOWN   =  0 << COUNT_BITS;
     private static final int STOP       =  1 << COUNT_BITS;
@@ -390,8 +406,13 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     private static final int TERMINATED =  3 << COUNT_BITS;
 
     // Packing and unpacking ctl
+    // ~CAPACITY    1110 0000 0000 0000 0000 0000 0000 0000
     private static int runStateOf(int c)     { return c & ~CAPACITY; }
     private static int workerCountOf(int c)  { return c & CAPACITY; }
+
+    /**
+     * 生成的{@link #ctl}前3位表示runState，后29位表示workerCount
+     */
     private static int ctlOf(int rs, int wc) { return rs | wc; }
 
     /*
