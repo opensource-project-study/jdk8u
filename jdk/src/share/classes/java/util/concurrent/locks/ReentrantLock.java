@@ -164,6 +164,9 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             return getExclusiveOwnerThread() == Thread.currentThread();
         }
 
+        /**
+         * 在外部类中返回一个内部类对象，典型的内部类用法
+         */
         final ConditionObject newCondition() {
             return new ConditionObject();
         }

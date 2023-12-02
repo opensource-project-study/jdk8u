@@ -1513,6 +1513,10 @@ public abstract class AbstractQueuedSynchronizer
         // The correctness of this depends on head being initialized
         // before tail and on head.next being accurate if the current
         // thread is first in queue.
+        /**
+         * 假设线程1调用{@link ReentrantLock.FairSync#lock()}，在调用{@link ReentrantLock.FairSync#tryAcquire(int)}失败后会调用{@link #enq(Node)}方法使线程入队，在初始化{@link #head}和{@link #tail}这两个节点时，先初始化head，然后把head赋值给tail
+         * 如果在执行tail = head;这个操作之前，线程2进行{@link ReentrantLock.FairSync#lock()}就会调用到这里做检查，因为此时tail还是null，但是线程1很快入队成功，就会出现head.next == null这种场景，此时认为线程2前面是有线程在等待的。
+         */
         Node t = tail; // Read fields in reverse initialization order
         Node h = head;
         Node s;
@@ -1826,6 +1830,14 @@ public abstract class AbstractQueuedSynchronizer
      *
      * <p>This class is Serializable, but all fields are transient,
      * so deserialized conditions have no waiters.
+     *
+     * <P>在代码设计上，这是一个典型的内部类的用法，即ConditionObject是一个内部类，拥有
+     * 其外围类的所有成员的访问权。只能使用外部类的对象来创建该内部类对象，换句话说，在拥有
+     * 外部类对象之前是不可能创建内部类对象的。当外围类的对象创建了一个内部类对象时，此内部
+     * 类对象会捕获一个指向外围类对象的引用，然后，在内部类中访问此外围类的成员时，其实就是
+     * 用捕获的引用来选择外围类的成员。
+     * <p>这里说的内部类是普通的内部类。如果是静态内部类（通常称为嵌套类）则不具备上述性质。
+     * <p>关于内部类的详细资料，参考《Java编程思想》第10章
      */
     public class ConditionObject implements Condition, java.io.Serializable {
         private static final long serialVersionUID = 1173984872572414699L;
@@ -1853,6 +1865,7 @@ public abstract class AbstractQueuedSynchronizer
                 t = lastWaiter;
             }
             Node node = new Node(Thread.currentThread(), Node.CONDITION);
+            // 典型的尾插法，lastWaiter始终指向尾节点
             if (t == null)
                 firstWaiter = node;
             else
@@ -2033,6 +2046,7 @@ public abstract class AbstractQueuedSynchronizer
             if (Thread.interrupted())
                 throw new InterruptedException();
             Node node = addConditionWaiter();
+            // 在内部类中调用外部类的方法，显式调用应该是AbstractQueuedSynchronizer.this.fullyRelease(node);
             int savedState = fullyRelease(node);
             int interruptMode = 0;
             while (!isOnSyncQueue(node)) {

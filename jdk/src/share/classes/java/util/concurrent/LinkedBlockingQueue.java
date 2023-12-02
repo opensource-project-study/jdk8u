@@ -198,6 +198,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     private void enqueue(Node<E> node) {
         // assert putLock.isHeldByCurrentThread();
         // assert last.next == null;
+        // 尾插法，last始终指向尾节点
         last = last.next = node;
     }
 
