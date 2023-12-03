@@ -816,12 +816,17 @@ public abstract class AbstractQueuedSynchronizer
             /*
              * This node has already set status asking a release
              * to signal it, so it can safely park.
+             *
+             * 返回true之后，Caller就会调用parkAndCheckInterrupt方法了
              */
             return true;
         if (ws > 0) {
             /*
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
+             *
+             * 如果pre.waitStatus为CANCELLED，从pre.prev开始，沿prev引用向前查找，找到第一个不是CANCELLED状态的节点，作为node的前驱，
+             * 新的前驱和node之间的节点从CLH队列中移除。
              */
             do {
                 node.prev = pred = pred.prev;
@@ -832,9 +837,13 @@ public abstract class AbstractQueuedSynchronizer
              * waitStatus must be 0 or PROPAGATE.  Indicate that we
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.
+             *
+             * 第一次调用shouldParkAfterFailedAcquire一般会调用到这里来设置pre.waitStatus为SIGNAL
+             * Caller重试加锁失败之后，再次调用shouldParkAfterFailedAcquire时直接返回true
              */
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
+        // 返回false后，Caller会进行重试去获取锁
         return false;
     }
 
@@ -891,11 +900,15 @@ public abstract class AbstractQueuedSynchronizer
                 // unpark操作之后，parkAndCheckInterrupt方法就可以返回，然后进入for(;;)循环的下一次迭代
                 // unpark操作一般发生在持有锁的线程进行释放锁时，即调用unlock方法时，只有持有锁的次数减至0才会真正释放锁，
                 // 所以进入for循环的下一次迭代后tryAcquire仍然可能失败，从而再次阻塞当前线程
+                // 当然，如果对当前线程进行中断，也能解除park操作，使UNSAFE.park(false, 0L)方法立刻返回，
+                // parkAndCheckInterrupt方法会调用Thread.interrupted()检查线程的中断状态，如果确实被中断，就应该告知调用方
+                // 因为Thread.interrupted()方法会清除当前线程的中断状态。
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
             }
         } finally {
+            // 当tryAcquire(arg)方法发生异常时，当前线程就应该取消掉尝试加锁的操作
             if (failed)
                 cancelAcquire(node);
         }
@@ -1225,6 +1238,8 @@ public abstract class AbstractQueuedSynchronizer
     public final void acquire(int arg) {
         if (!tryAcquire(arg) &&
             acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+            // acquireQueued方法会调用Thread.interrupted()检查线程的中断状态，因为Thread.interrupted()方法会清除当前线程的中断状态。
+            // 所以如果线程确实被中断，需要重新设置中断，以避免依赖线程中断状态的业务受到影响
             selfInterrupt();
     }
 
