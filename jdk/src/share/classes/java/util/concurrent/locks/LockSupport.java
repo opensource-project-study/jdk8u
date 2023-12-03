@@ -165,6 +165,8 @@ public class LockSupport {
      * the thread to park in the first place. Callers may also determine,
      * for example, the interrupt status of the thread upon return.
      *
+     * <p>在AQS框架中，park操作是一个非常重要的操作。park操作会阻塞线程，使线程休眠，从而禁止对其进行线程调度
+     *
      * @param blocker the synchronization object responsible for this
      *        thread parking
      * @since 1.6

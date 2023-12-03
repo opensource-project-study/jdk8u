@@ -1008,14 +1008,22 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
 
     /** Implementation for put and putIfAbsent */
     final V putVal(K key, V value, boolean onlyIfAbsent) {
+        // 代码层面限制了在put操作时key和value均不能为null
         if (key == null || value == null) throw new NullPointerException();
         int hash = spread(key.hashCode());
         int binCount = 0;
+        // 这里使用的是一个无限for循环，插入或更新节点成功后才会退出循环
+        // 之所以使用一个无限for循环，更多的考虑是保证并发场景下插入或更新成功
+        // 例如，线程A和线程B一起操作一个空数组，线程A初始化数组成功，然后在for循环的下一次迭代中插入数据(key1,val1)；
+        // 如果此时线程B还没有插入数据(key2,val2)，并且key1和key2的散列码相同，因为CAS操作，val2是不会覆盖val1的，
+        // 会在for循环的下次迭代中通过单向链表解决散列冲突。这样就保证了并发操作的正确。
         for (Node<K,V>[] tab = table;;) {
             Node<K,V> f; int n, i, fh;
             if (tab == null || (n = tab.length) == 0)
+                // 第一次插入，初始化数组，CAS操作保证在并发情况下只会有一个线程对数组进行初始化
                 tab = initTable();
             else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
+                // 使用CAS操作把一个节点放到tab数组一个下标处，作为这个位置的桶内的第一个节点
                 if (casTabAt(tab, i, null,
                              new Node<K,V>(hash, key, value, null)))
                     break;                   // no lock when adding to empty bin
@@ -1024,10 +1032,13 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 tab = helpTransfer(tab, f);
             else {
                 V oldVal = null;
+                // 使用桶内的第一个节点作为锁
                 synchronized (f) {
+                    // 首先验证这个锁是有效的，因为桶内的第一个节点可能会变更
                     if (tabAt(tab, i) == f) {
                         if (fh >= 0) {
                             binCount = 1;
+                            // 无限for循环，只有插入或更新成功后才退出循环
                             for (Node<K,V> e = f;; ++binCount) {
                                 K ek;
                                 if (e.hash == hash &&
@@ -1046,6 +1057,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                 }
                             }
                         }
+                        // 哈希值小于0，有特殊的含义，例如该桶内是一颗红黑树
                         else if (f instanceof TreeBin) {
                             Node<K,V> p;
                             binCount = 2;
@@ -1059,6 +1071,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     }
                 }
                 if (binCount != 0) {
+                    // 桶内节点的个数(不包含头结点)大或等于TREEIFY_THRESHOLD(8)时，单向链表转为红黑树
                     if (binCount >= TREEIFY_THRESHOLD)
                         treeifyBin(tab, i);
                     if (oldVal != null)

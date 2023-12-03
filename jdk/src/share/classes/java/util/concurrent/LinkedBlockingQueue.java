@@ -142,6 +142,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     /**
      * Head of linked list.
      * Invariant: head.item == null
+     * <p>head是一个哨兵节点，不存储实际的数据
      */
     transient Node<E> head;
 
@@ -173,6 +174,8 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         try {
             notEmpty.signal();
         } finally {
+            // 在notEmpty.signal()中会把Condition的wait queue中的node加入到AQS的CLH队列
+            // 所以，这里可以对该node中存储的线程进行unpark操作
             takeLock.unlock();
         }
     }
@@ -357,6 +360,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         } finally {
             putLock.unlock();
         }
+        // 当链表中有一个节点时（插入新节点前链表为空），对notEmpty这个Condition进行通知
         if (c == 0)
             signalNotEmpty();
     }

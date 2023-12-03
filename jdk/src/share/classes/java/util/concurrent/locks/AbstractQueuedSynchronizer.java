@@ -518,6 +518,8 @@ public abstract class AbstractQueuedSynchronizer
      * initialization, it is modified only via method setHead.  Note:
      * If head exists, its waitStatus is guaranteed not to be
      * CANCELLED.
+     *
+     * <p>head是一个哨兵节点，不存储线程信息
      */
     private transient volatile Node head;
 
@@ -577,6 +579,9 @@ public abstract class AbstractQueuedSynchronizer
 
     /**
      * Inserts node into queue, initializing if necessary. See picture above.
+     * <p>在一个无限for循环中进行CAS操作是处理并发场景的典型方案。当有多个线程同时进行CAS操作时，
+     * <p>只有一个线程可以成功，失败的其它线程则进入循环中的下次迭代进行重试，直到所有线程都处理完成。
+     *
      * @param node the node to insert
      * @return node's predecessor
      */
@@ -584,11 +589,15 @@ public abstract class AbstractQueuedSynchronizer
         for (;;) {
             Node t = tail;
             if (t == null) { // Must initialize
+                // 使用CAS操作使head指向创建的Node（哨兵节点），若成功，使tail也指向该Node，从而完成CLH队列的初始化
                 if (compareAndSetHead(new Node()))
                     tail = head;
             } else {
+                // node向前连接
                 node.prev = t;
+                // 使用CAS操作使tail指向node，即tail始终指向CLH队列的最后一个节点
                 if (compareAndSetTail(t, node)) {
+                    // t向后连接
                     t.next = node;
                     return t;
                 }
@@ -607,12 +616,16 @@ public abstract class AbstractQueuedSynchronizer
         // Try the fast path of enq; backup to full enq on failure
         Node pred = tail;
         if (pred != null) {
+            // node向前连接
             node.prev = pred;
+            // 使用CAS操作使tail指向node
             if (compareAndSetTail(pred, node)) {
+                // pred向后连接
                 pred.next = node;
                 return node;
             }
         }
+        // 初始化CLH队列，并将node插入该队列尾部
         enq(node);
         return node;
     }
@@ -621,6 +634,9 @@ public abstract class AbstractQueuedSynchronizer
      * Sets head of queue to be node, thus dequeuing. Called only by
      * acquire methods.  Also nulls out unused fields for sake of GC
      * and to suppress unnecessary signals and traversals.
+     *
+     * <p>把head指向node，即把node设置为CLH队列的头节点
+     * <p>因为head指向的是一个哨兵节点，不存储线程的信息，所以这里的操作相当于将node从CLH中移除
      *
      * @param node the node
      */
@@ -652,6 +668,8 @@ public abstract class AbstractQueuedSynchronizer
          * non-cancelled successor.
          */
         Node s = node.next;
+        // 如果s被cancelled，则从CLH队列的尾部开始向前查找，直到找到一个没有被cancelled的节点，
+        // 然后对s中的线程进行unpark操作
         if (s == null || s.waitStatus > 0) {
             s = null;
             for (Node t = tail; t != null && t != node; t = t.prev)
@@ -860,12 +878,19 @@ public abstract class AbstractQueuedSynchronizer
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
+                // 如果node是head后的第一个节点，则调用tryAcquire尝试为当前线程重新获取锁
+                // 如果获取锁成功，将node置为头结点，相当于将node从等待队列中移除
                 if (p == head && tryAcquire(arg)) {
                     setHead(node);
                     p.next = null; // help GC
                     failed = false;
                     return interrupted;
                 }
+                // 如果node不是head后的第一个节点，或者加锁失败，
+                // 则先检查是否可以park，若可以park则对当前线程进行park操作，阻塞当前线程，直到该线程被unpark，
+                // unpark操作之后，parkAndCheckInterrupt方法就可以返回，然后进入for(;;)循环的下一次迭代
+                // unpark操作一般发生在持有锁的线程进行释放锁时，即调用unlock方法时，只有持有锁的次数减至0才会真正释放锁，
+                // 所以进入for循环的下一次迭代后tryAcquire仍然可能失败，从而再次阻塞当前线程
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
@@ -1190,6 +1215,9 @@ public abstract class AbstractQueuedSynchronizer
      * #tryAcquire} until success.  This method can be used
      * to implement method {@link Lock#lock}.
      *
+     * <p>如果{@link #tryAcquire}成功，直接退出该方法。否则，先调用{@link #addWaiter(Node)}
+     * <p>将当前线程封装为一个节点node，并将其加入到CLH队列的尾部。
+     *
      * @param arg the acquire argument.  This value is conveyed to
      *        {@link #tryAcquire} but is otherwise uninterpreted and
      *        can represent anything you like.
@@ -1260,6 +1288,7 @@ public abstract class AbstractQueuedSynchronizer
     public final boolean release(int arg) {
         if (tryRelease(arg)) {
             Node h = head;
+            // tryRelease成功后，若CLH队列中有缓存的线程，则对head后的第一个节点内的线程进行unpark
             if (h != null && h.waitStatus != 0)
                 unparkSuccessor(h);
             return true;
@@ -1683,6 +1712,8 @@ public abstract class AbstractQueuedSynchronizer
          * indicate that thread is (probably) waiting. If cancelled or
          * attempt to set waitStatus fails, wake up to resync (in which
          * case the waitStatus can be transiently and harmlessly wrong).
+         *
+         * 把Condition维护的wait queue中的node加入到AQS中的CLH队列中
          */
         Node p = enq(node);
         int ws = p.waitStatus;
@@ -1855,6 +1886,9 @@ public abstract class AbstractQueuedSynchronizer
 
         /**
          * Adds a new waiter to wait queue.
+         * <p>Condition中维护的一个队列（是一个单项链表），缓存等待该Condition的线程，因为进行await时肯定获取了该Condition关联的锁，
+         * <p>所以，这里不用做同步操作
+         *
          * @return its new wait node
          */
         private Node addConditionWaiter() {
@@ -1881,7 +1915,9 @@ public abstract class AbstractQueuedSynchronizer
          * @param first (non-null) the first node on condition queue
          */
         private void doSignal(Node first) {
+            // 因为节点可能被置为CANCELLED，所以需要一个循环来处理
             do {
+                // 将firstWaiter指向first的下一个节点，即将first节点从wait queue这个单项链表中移除
                 if ( (firstWaiter = first.nextWaiter) == null)
                     lastWaiter = null;
                 first.nextWaiter = null;
@@ -2047,8 +2083,10 @@ public abstract class AbstractQueuedSynchronizer
                 throw new InterruptedException();
             Node node = addConditionWaiter();
             // 在内部类中调用外部类的方法，显式调用应该是AbstractQueuedSynchronizer.this.fullyRelease(node);
+            // 释放获取到的锁，以让其它线程获取到该Condition关联的锁，然后对该Condition进行signal
             int savedState = fullyRelease(node);
             int interruptMode = 0;
+            // 如果node不在AQS维护的CLH队列中，就对当前线程进行park
             while (!isOnSyncQueue(node)) {
                 LockSupport.park(this);
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
