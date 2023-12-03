@@ -825,7 +825,7 @@ public abstract class AbstractQueuedSynchronizer
              * Predecessor was cancelled. Skip over predecessors and
              * indicate retry.
              *
-             * 如果pre.waitStatus为CANCELLED，从pre.prev开始，沿prev引用向前查找，找到第一个不是CANCELLED状态的节点，作为node的前驱，
+             * 如果pred.waitStatus为CANCELLED，从pred.prev开始，沿prev引用向前查找，找到第一个不是CANCELLED状态的节点，作为node的前驱，
              * 新的前驱和node之间的节点从CLH队列中移除。
              */
             do {
