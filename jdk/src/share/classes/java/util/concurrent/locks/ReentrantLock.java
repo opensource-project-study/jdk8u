@@ -247,6 +247,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             final Thread current = Thread.currentThread();
             int c = getState();
             if (c == 0) {
+                // 先检查CLH队列中是否有缓存的线程在等待获取锁，如果有，就应该让等待的线程优先获取锁
                 if (!hasQueuedPredecessors() &&
                     compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);

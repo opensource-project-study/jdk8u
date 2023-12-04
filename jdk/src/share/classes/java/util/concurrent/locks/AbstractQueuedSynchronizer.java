@@ -626,6 +626,7 @@ public abstract class AbstractQueuedSynchronizer
             }
         }
         // 初始化CLH队列，并将node插入该队列尾部
+        // 或者，在上面的fast path中CAS失败，则在enq方法中把node插入CLH队列尾部
         enq(node);
         return node;
     }
@@ -777,10 +778,13 @@ public abstract class AbstractQueuedSynchronizer
         // Can use unconditional write instead of CAS here.
         // After this atomic step, other Nodes can skip past us.
         // Before, we are free of interference from other threads.
+        // shouldParkAfterFailedAcquire、cancelAcquire等方法都会把CANCELLED状态的节点从CLH队列中移除掉
         node.waitStatus = Node.CANCELLED;
 
         // If we are the tail, remove ourselves.
+        // 如果node是尾节点，则将tail指向node的前驱pred，从而将node从CLH队列中移除
         if (node == tail && compareAndSetTail(node, pred)) {
+            // 设置pred的后继为null
             compareAndSetNext(pred, predNext, null);
         } else {
             // If successor needs signal, try to set pred's next-link
@@ -792,8 +796,13 @@ public abstract class AbstractQueuedSynchronizer
                 pred.thread != null) {
                 Node next = node.next;
                 if (next != null && next.waitStatus <= 0)
+                    // 将pred的后继置为node的后继，即将node从队列中移除（移除的并不彻底，因为next.prev还指向node，不过没有影响，因为shouldParkAfterFailedAcquire等方法中会把CANCELLED状态的节点沿prev引用移除）
+                    // 从而有机会可以唤醒node.next
                     compareAndSetNext(pred, predNext, next);
             } else {
+                // 如果pred为head
+                // 或者pred.thread == null，pred节点很可能走了cancelAcquire方法的逻辑
+                // 就对node后继节点中存储的线程进行unpark
                 unparkSuccessor(node);
             }
 
