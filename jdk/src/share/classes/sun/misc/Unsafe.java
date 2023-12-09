@@ -984,6 +984,7 @@ public final class Unsafe {
      * <p>如果先调用了unpark(thread)，接着在thread线程进行park，此时park操作不会阻塞该thread，这一次之后的park操作就正常了
      *
      * <p>具体的逻辑可以查看：
+     * <p>jdk8u/hotspot/src/share/vm/prims/unsafe.cpp中的UNSAFE_ENTRY(void, Unsafe_Unpark(JNIEnv *env, jobject unsafe, jobject jthread))
      * <p>jdk8u/hotspot/src/os/linux/vm/os_linux.cpp中的Parker::unpark方法（Linux平台构建的JDK）
      * <p>jdk8u/hotspot/src/os/bsd/vm/os_bsd.cpp中的Parker::unpark方法（MacOS平台构建的JDK）
      *
@@ -1003,14 +1004,15 @@ public final class Unsafe {
      * because <tt>unpark</tt> is, so it would be strange to place it
      * elsewhere.
      *
-     * <p>阻塞当前线程
-     * <p>除非，对该线程进行unpark
+     * <p>阻塞当前线程，直到下列行为发生时，park方法才会返回：
+     * <p>     对该线程进行unpark
      * <p>或者，在本次park之前已经进行了unpark，参考{@link #unpark(Object)}
      * <p>或者，对该线程进行中断
      * <p>或者，当isAbsolute == false && time > 0，等待time nanoseconds后超时
      * <p>或者，当isAbsolute == true时，到达给定的deadline
      *
      * <p>具体的逻辑可以查看：
+     * <p>jdk8u/hotspot/src/share/vm/prims/unsafe.cpp中的UNSAFE_ENTRY(void, Unsafe_Park(JNIEnv *env, jobject unsafe, jboolean isAbsolute, jlong time))
      * <p>jdk8u/hotspot/src/os/linux/vm/os_linux.cpp中的Parker::park方法（Linux平台构建的JDK）
      * <p>jdk8u/hotspot/src/os/bsd/vm/os_bsd.cpp中的Parker::park方法（MacOS平台构建的JDK）
      */

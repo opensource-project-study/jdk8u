@@ -669,7 +669,7 @@ public abstract class AbstractQueuedSynchronizer
          * non-cancelled successor.
          */
         Node s = node.next;
-        // 如果s被cancelled，则从CLH队列的尾部开始向前查找，直到找到一个没有被cancelled的节点，
+        // 如果s被cancelled，则从CLH队列的尾部开始向前查找，直到找到一个离head节点最近的没有被cancelled的节点，
         // 然后对s中的线程进行unpark操作
         if (s == null || s.waitStatus > 0) {
             s = null;
@@ -917,7 +917,7 @@ public abstract class AbstractQueuedSynchronizer
                     interrupted = true;
             }
         } finally {
-            // 当tryAcquire(arg)方法发生异常时，当前线程就应该取消掉尝试加锁的操作
+            // 当tryAcquire(arg)方法发生异常时，当前线程就应该取消掉尝试加锁的操作，即把node.thread置为null，node.waitStatus置为CANCELLED，node节点从CLH队列中移除
             if (failed)
                 cancelAcquire(node);
         }
@@ -942,9 +942,11 @@ public abstract class AbstractQueuedSynchronizer
                 }
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
+                    // 如果线程被中断，直接抛出中断异常
                     throw new InterruptedException();
             }
         } finally {
+            // 如果当前线程被中断，把node.thread置为null，node.waitStatus置为CANCELLED，node节点从CLH队列中移除
             if (failed)
                 cancelAcquire(node);
         }
@@ -959,6 +961,7 @@ public abstract class AbstractQueuedSynchronizer
      */
     private boolean doAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
+        // 如果超时时间<=0，直接返回false
         if (nanosTimeout <= 0L)
             return false;
         final long deadline = System.nanoTime() + nanosTimeout;
@@ -978,8 +981,11 @@ public abstract class AbstractQueuedSynchronizer
                     return false;
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     nanosTimeout > spinForTimeoutThreshold)
+                    // park操作的超时时间设置为nanosTimeout
+                    // nanosTimeout是根据deadline减去当前时间算出的，因此，每次迭代，nanosTimeout都会变小，直到最终nanosTimeout<=0
                     LockSupport.parkNanos(this, nanosTimeout);
                 if (Thread.interrupted())
+                    // 如果线程被中断，直接抛出中断异常
                     throw new InterruptedException();
             }
         } finally {
@@ -1737,7 +1743,7 @@ public abstract class AbstractQueuedSynchronizer
          * attempt to set waitStatus fails, wake up to resync (in which
          * case the waitStatus can be transiently and harmlessly wrong).
          *
-         * 把Condition维护的wait queue中的node加入到AQS中的CLH队列中
+         * 把Condition维护的wait queue中的node加入到AQS中的CLH队列的尾部
          */
         Node p = enq(node);
         int ws = p.waitStatus;
@@ -1754,6 +1760,7 @@ public abstract class AbstractQueuedSynchronizer
      * @return true if cancelled before the node was signalled
      */
     final boolean transferAfterCancelledWait(Node node) {
+        // 如果CAS操作成功，表示还没有对该node进行signal，参考：ConditionObject#signal
         if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
             enq(node);
             return true;
@@ -1763,6 +1770,8 @@ public abstract class AbstractQueuedSynchronizer
          * until it finishes its enq().  Cancelling during an
          * incomplete transfer is both rare and transient, so just
          * spin.
+         *
+         * 如果改node已经进行了signal，只需等待signal完成
          */
         while (!isOnSyncQueue(node))
             Thread.yield();
@@ -1910,7 +1919,7 @@ public abstract class AbstractQueuedSynchronizer
 
         /**
          * Adds a new waiter to wait queue.
-         * <p>Condition中维护的一个队列（是一个单项链表），缓存等待该Condition的线程，因为进行await时肯定获取了该Condition关联的锁，
+         * <p>Condition中维护的一个队列（是一个单向链表），缓存等待该Condition的线程，因为进行await时肯定获取了该Condition关联的锁，
          * <p>所以，这里不用做同步操作
          *
          * @return its new wait node
@@ -1941,7 +1950,7 @@ public abstract class AbstractQueuedSynchronizer
         private void doSignal(Node first) {
             // 因为节点可能被置为CANCELLED，所以需要一个循环来处理
             do {
-                // 将firstWaiter指向first的下一个节点，即将first节点从wait queue这个单项链表中移除
+                // 将firstWaiter指向first的下一个节点，即将first节点从wait queue这个单向链表中移除
                 if ( (firstWaiter = first.nextWaiter) == null)
                     lastWaiter = null;
                 first.nextWaiter = null;
@@ -1976,12 +1985,16 @@ public abstract class AbstractQueuedSynchronizer
          * particular target to unlink all pointers to garbage nodes
          * without requiring many re-traversals during cancellation
          * storms.
+         *
+         * <p>从condition的wait queue中移除cancelled的节点，因为caller都是await相关的方法，而执行await时已经获取到锁，因此这里不必做同步操作
          */
         private void unlinkCancelledWaiters() {
             Node t = firstWaiter;
+            // trail保存第一个没有被cancel的节点
             Node trail = null;
             while (t != null) {
                 Node next = t.nextWaiter;
+                // 如果t.waitStatus不为CONDITION，将此节点移除
                 if (t.waitStatus != Node.CONDITION) {
                     t.nextWaiter = null;
                     if (trail == null)
@@ -2070,6 +2083,8 @@ public abstract class AbstractQueuedSynchronizer
          * Checks for interrupt, returning THROW_IE if interrupted
          * before signalled, REINTERRUPT if after signalled, or
          * 0 if not interrupted.
+         *
+         * <p>因为Thread.interrupted()会清除中断状态，所以需要把中断情况返回，供调用方决策，以避免上层方法中依赖线程中断状态的逻辑受到影响
          */
         private int checkInterruptWhileWaiting(Node node) {
             return Thread.interrupted() ?
@@ -2083,9 +2098,12 @@ public abstract class AbstractQueuedSynchronizer
          */
         private void reportInterruptAfterWait(int interruptMode)
             throws InterruptedException {
+            // 如果在signal之前，当前线程被中断，则直接抛出中断异常，await方法抛出异常而终止
             if (interruptMode == THROW_IE)
                 throw new InterruptedException();
             else if (interruptMode == REINTERRUPT)
+                // 如果在signal之后，当前线程被中断，则await方法不受影响，参考await方法上的注释
+                // 因为Thread.interrupted()方法会清除当前线程的中断状态，为避免上层方法中依赖线程中断状态的逻辑受到影响，需要重新设置中断状态
                 selfInterrupt();
         }
 
@@ -2107,15 +2125,20 @@ public abstract class AbstractQueuedSynchronizer
                 throw new InterruptedException();
             Node node = addConditionWaiter();
             // 在内部类中调用外部类的方法，显式调用应该是AbstractQueuedSynchronizer.this.fullyRelease(node);
-            // 释放获取到的锁，以让其它线程获取到该Condition关联的锁，然后对该Condition进行signal
+            // 释放该Condition关联的锁，以让其它线程获取到该Condition关联的锁，然后对该Condition进行signal
             int savedState = fullyRelease(node);
             int interruptMode = 0;
             // 如果node不在AQS维护的CLH队列中，就对当前线程进行park
+            // signal方法会把Condition的wait queue中的node移到AQS维护的CLH队列中，所以这里的while循环可以理解为在等待该node被signal
             while (!isOnSyncQueue(node)) {
                 LockSupport.park(this);
+                // 如果当前线程被中断，跳出while循环
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            // 重新获取该Condition关联的锁
+            // interruptMode != THROW_IE，有两种情况，在checkInterruptWhileWaiting时，线程没有被中断 或者 在signal之后，线程被中断
+            // 因为acquireQueued方法会返回在重试加锁过程中的线程中断状态，如果确实中断了，只要interruptMode不是THROW_IE，就应该设置为REINTERRUPT，以重新设置中断状态。除非interruptMode是THROW_IE，需要抛出异常。
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
             if (node.nextWaiter != null) // clean up if cancelled
@@ -2150,6 +2173,8 @@ public abstract class AbstractQueuedSynchronizer
                     transferAfterCancelledWait(node);
                     break;
                 }
+                // park操作的超时时间设置为nanosTimeout
+                // nanosTimeout是根据deadline减去当前时间算出的，因此，每次迭代，nanosTimeout都会变小，直到最终nanosTimeout<=0
                 if (nanosTimeout >= spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)

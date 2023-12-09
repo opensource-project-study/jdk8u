@@ -374,6 +374,8 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * <p>If the lock is held by another thread then this method will return
      * immediately with the value {@code false}.
      *
+     * <p>使用nonfairTryAcquire方法抢占式加锁，不管{@link #sync}是FairSync还是NonfairSync，如果成功，返回true；如果失败，立马返回false，而不进行重试操作。
+     *
      * @return {@code true} if the lock was free and was acquired by the
      *         current thread, or the lock was already held by the current
      *         thread; and {@code false} otherwise

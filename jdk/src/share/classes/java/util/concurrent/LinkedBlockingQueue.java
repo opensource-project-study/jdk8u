@@ -385,6 +385,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         putLock.lockInterruptibly();
         try {
             while (count.get() == capacity) {
+                // 如果timeout<=0，直接返回false
                 if (nanos <= 0)
                     return false;
                 nanos = notFull.awaitNanos(nanos);
@@ -415,6 +416,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     public boolean offer(E e) {
         if (e == null) throw new NullPointerException();
         final AtomicInteger count = this.count;
+        // 达到容量之后，直接返回false，不进行await操作
         if (count.get() == capacity)
             return false;
         int c = -1;
@@ -443,16 +445,19 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lockInterruptibly();
         try {
+            // 必须在一个while循环中进行await，因为await前后 条件检查的值可能发生变化，所以await返回之后需要重新检查条件是否满足
             while (count.get() == 0) {
                 notEmpty.await();
             }
             x = dequeue();
             c = count.getAndDecrement();
+            // 如果递减之前的数量大于1，说明递减之后的数量大于0
             if (c > 1)
                 notEmpty.signal();
         } finally {
             takeLock.unlock();
         }
+        // 如果递减之前的数量达到capacity，说明递减之后的数量小于capacity
         if (c == capacity)
             signalNotFull();
         return x;
@@ -467,6 +472,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         takeLock.lockInterruptibly();
         try {
             while (count.get() == 0) {
+                // 如果timeout<=0，直接返回null
                 if (nanos <= 0)
                     return null;
                 nanos = notEmpty.awaitNanos(nanos);
@@ -485,6 +491,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
 
     public E poll() {
         final AtomicInteger count = this.count;
+        // 如果队列为空，直接返回null，不进行await操作
         if (count.get() == 0)
             return null;
         E x = null;
