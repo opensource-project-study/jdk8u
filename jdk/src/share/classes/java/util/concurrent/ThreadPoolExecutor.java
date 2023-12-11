@@ -612,6 +612,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * the thread actually starts running tasks, we initialize lock
      * state to a negative value, and clear it upon start (in
      * runWorker).
+     *
+     * <p>Worker是一个普通的内部类，可以访问外部类的成员，参考{@link java.util.concurrent.locks.AbstractQueuedSynchronizer.ConditionObject}
+     * <p>使用{@link AbstractQueuedSynchronizer#state}作为锁的状态。0 未锁定；1 锁定。
      */
     private final class Worker
         extends AbstractQueuedSynchronizer
@@ -637,10 +640,16 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         Worker(Runnable firstTask) {
             setState(-1); // inhibit interrupts until runWorker
             this.firstTask = firstTask;
+            // 把this作为参数传给newThread，即把当前的Worker对象作为thread的target属性
+            // thread启动时，会调用其target的run方法，这里就是该Worker对象的run方法
             this.thread = getThreadFactory().newThread(this);
         }
 
-        /** Delegates main run loop to outer runWorker  */
+        /**
+         * Delegates main run loop to outer runWorker
+         *
+         * <p>委托给外围类的方法{@link #runWorker(Worker)}，显式的调用应该是{@code ThreadPoolExecutor.this.runWorker(Worker)}
+         */
         public void run() {
             runWorker(this);
         }
@@ -920,6 +929,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * @return true if successful
      */
     private boolean addWorker(Runnable firstTask, boolean core) {
+        // 这里的retry是一个标签，参考《Java编程思想》P73
         retry:
         for (;;) {
             int c = ctl.get();
@@ -934,13 +944,17 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
 
             for (;;) {
                 int wc = workerCountOf(c);
+                // 边界值判断
                 if (wc >= CAPACITY ||
                     wc >= (core ? corePoolSize : maximumPoolSize))
                     return false;
+                // 对ctl进行CAS操作，若成功，就跳出外循环；若失败，说明存在并发情况，之后在内部的for循环中重试即可。
                 if (compareAndIncrementWorkerCount(c))
+                    // 中断并跳出标签（这里的标签是retry）所指的循环，这里指外层的for循环
                     break retry;
                 c = ctl.get();  // Re-read ctl
                 if (runStateOf(c) != rs)
+                    // 到达标签（这里的标签是retry）的位置，并重新进入紧接在那个标签后面的循环，这里指外层的for循环
                     continue retry;
                 // else CAS failed due to workerCount change; retry inner loop
             }
@@ -967,6 +981,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                             throw new IllegalThreadStateException();
                         workers.add(w);
                         int s = workers.size();
+                        // 记录达到过的最大工作线程数
                         if (s > largestPoolSize)
                             largestPoolSize = s;
                         workerAdded = true;
@@ -974,6 +989,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                 } finally {
                     mainLock.unlock();
                 }
+                // 若worker添加成功，启动worker内的线程
                 if (workerAdded) {
                     t.start();
                     workerStarted = true;
@@ -1391,6 +1407,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         }
         if (isRunning(c) && workQueue.offer(command)) {
             int recheck = ctl.get();
+            // 重新检查，如果线程池不处于RUNNING，task从workQueue中移除
             if (! isRunning(recheck) && remove(command))
                 reject(command);
             else if (workerCountOf(recheck) == 0)

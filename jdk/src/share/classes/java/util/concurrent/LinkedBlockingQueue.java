@@ -530,7 +530,8 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     }
 
     /**
-     * Unlinks interior Node p with predecessor trail.
+     * Unlinks interior Node p with predecessor trail. Assert trail.next == p
+     * <p>把节点p移除
      */
     void unlink(Node<E> p, Node<E> trail) {
         // assert isFullyLocked();
