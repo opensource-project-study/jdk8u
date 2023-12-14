@@ -1762,6 +1762,8 @@ public abstract class AbstractQueuedSynchronizer
     final boolean transferAfterCancelledWait(Node node) {
         // 如果CAS操作成功，表示还没有对该node进行signal，参考：ConditionObject#signal
         if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
+            // 因为此时还没有signal，node还没有加入到CLH队列中，而之后调用的acquireQueued方法会对CLH队列中缓存的线程尝试获取锁
+            // 所以需要把node放入到CLH队列中，以让当前线程重试获取锁
             enq(node);
             return true;
         }
@@ -2170,6 +2172,7 @@ public abstract class AbstractQueuedSynchronizer
             int interruptMode = 0;
             while (!isOnSyncQueue(node)) {
                 if (nanosTimeout <= 0L) {
+                    // 已经超时了，但是还没有等到一个signal，此时直接把node节点加入到AQS的CLH队列中，以让后续的acquireQueued(final Node node, int arg)方法能为node中存储的线程重试获取到锁
                     transferAfterCancelledWait(node);
                     break;
                 }

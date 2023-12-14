@@ -472,7 +472,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         takeLock.lockInterruptibly();
         try {
             while (count.get() == 0) {
-                // 如果timeout<=0，直接返回null
+                // nanos表示剩余的超时时间，如果<=0，说明已经超时了，此时直接返回null即可
                 if (nanos <= 0)
                     return null;
                 nanos = notEmpty.awaitNanos(nanos);
@@ -720,6 +720,8 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
     }
 
     /**
+     * 把当前队列中的所有元素移除，并加入到c中
+     *
      * @throws UnsupportedOperationException {@inheritDoc}
      * @throws ClassCastException            {@inheritDoc}
      * @throws NullPointerException          {@inheritDoc}
@@ -755,7 +757,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
                     Node<E> p = h.next;
                     c.add(p.item);
                     p.item = null;
-                    h.next = h;
+                    h.next = h;//help GC
                     h = p;
                     ++i;
                 }
