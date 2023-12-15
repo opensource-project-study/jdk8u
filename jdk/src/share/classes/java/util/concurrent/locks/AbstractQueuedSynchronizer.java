@@ -669,7 +669,7 @@ public abstract class AbstractQueuedSynchronizer
          * non-cancelled successor.
          */
         Node s = node.next;
-        // 如果s被cancelled，则从CLH队列的尾部开始向前查找，直到找到一个离head节点最近的没有被cancelled的节点，
+        // 如果s被cancelled，则从CLH队列的尾部开始向前查找，找到离node节点最近的没有被cancelled的那个节点，
         // 然后对s中的线程进行unpark操作
         if (s == null || s.waitStatus > 0) {
             s = null;
@@ -703,6 +703,7 @@ public abstract class AbstractQueuedSynchronizer
             if (h != null && h != tail) {
                 int ws = h.waitStatus;
                 if (ws == Node.SIGNAL) {
+                    // 如果CAS操作失败，表示存在并发，重试即可
                     if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
                         continue;            // loop to recheck cases
                     unparkSuccessor(h);
@@ -745,6 +746,7 @@ public abstract class AbstractQueuedSynchronizer
          */
         if (propagate > 0 || h == null || h.waitStatus < 0 ||
             (h = head) == null || h.waitStatus < 0) {
+            // 若node的后继为null或者以SHARED模式进行等待一个读锁，唤醒node的后继
             Node s = node.next;
             if (s == null || s.isShared())
                 doReleaseShared();
@@ -801,7 +803,7 @@ public abstract class AbstractQueuedSynchronizer
                     compareAndSetNext(pred, predNext, next);
             } else {
                 // 如果pred为head
-                // 或者pred.thread == null，pred节点很可能走了cancelAcquire方法的逻辑
+                // 或者pred.thread == null，此时pred节点很可能走了cancelAcquire方法的逻辑
                 // 就对node后继节点中存储的线程进行unpark
                 unparkSuccessor(node);
             }
@@ -977,6 +979,7 @@ public abstract class AbstractQueuedSynchronizer
                     return true;
                 }
                 nanosTimeout = deadline - System.nanoTime();
+                // nanosTimeout表示剩余的超时时间，如果<=0，说明已经超时了，此时直接返回false即可
                 if (nanosTimeout <= 0L)
                     return false;
                 if (shouldParkAfterFailedAcquire(p, node) &&
@@ -999,17 +1002,20 @@ public abstract class AbstractQueuedSynchronizer
      * @param arg the acquire argument
      */
     private void doAcquireShared(int arg) {
+        // 把当前线程以SHARED模式封装为一个Node，加入到CLH队列中。
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
+                // node是head后面的第一个节点时，重新尝试获取锁
                 if (p == head) {
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
+                        // 如果线程被中断，需要重新设置中断状态。因为parkAndCheckInterrupt方法会调用方法Thread.interrupted()清除中断状态。
                         if (interrupted)
                             selfInterrupt();
                         failed = false;
@@ -1516,6 +1522,8 @@ public abstract class AbstractQueuedSynchronizer
      * #tryAcquireShared}) then it is guaranteed that the current thread
      * is not the first queued thread.  Used only as a heuristic in
      * ReentrantReadWriteLock.
+     *
+     * <p>检查CLH队列中head后的第一个节点是否以独占模式进行等待，即等待获取一个独占锁
      */
     final boolean apparentlyFirstQueuedIsExclusive() {
         Node h, s;

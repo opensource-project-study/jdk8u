@@ -123,6 +123,8 @@ public class ThreadLocal<T> {
      * subclassed, and this method overridden.  Typically, an
      * anonymous inner class will be used.
      *
+     * <p>第一次{@link #get()}会调用
+     *
      * @return the initial value for this thread-local
      */
     protected T initialValue() {
@@ -247,6 +249,8 @@ public class ThreadLocal<T> {
      * Get the map associated with a ThreadLocal. Overridden in
      * InheritableThreadLocal.
      *
+     * <p>每个线程维护了一个ThreadLocalMap
+     *
      * @param  t the current thread
      * @return the map
      */
@@ -344,6 +348,8 @@ public class ThreadLocal<T> {
         /**
          * The table, resized as necessary.
          * table.length MUST always be a power of two.
+         *
+         * <p>ThreadLocalMap的底层存储结构是一个Entry数组，实际上是由数组实现的一个散列表
          */
         private Entry[] table;
 

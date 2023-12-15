@@ -398,7 +398,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     //1左移29位 0010 0000 0000 0000 0000 0000 0000 0000
     //2左移29位 0100 0000 0000 0000 0000 0000 0000 0000
     //3左移29位 0110 0000 0000 0000 0000 0000 0000 0000
-    //综上，runState存储在ctl低址的前3位
+    //综上，runState存储在ctl低址的前3位，即高3位，因为JDK使用BIG ENDIAN，高位在低址
     private static final int RUNNING    = -1 << COUNT_BITS;
     private static final int SHUTDOWN   =  0 << COUNT_BITS;
     private static final int STOP       =  1 << COUNT_BITS;
