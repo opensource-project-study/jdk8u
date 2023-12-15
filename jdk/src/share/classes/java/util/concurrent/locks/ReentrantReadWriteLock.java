@@ -40,6 +40,12 @@ import java.util.Collection;
 /**
  * An implementation of {@link ReadWriteLock} supporting similar
  * semantics to {@link ReentrantLock}.
+ *
+ * <p>读写锁的一个基本思想是：
+ * <p>写锁对写锁、读锁都不兼容，除非是同一个线程。
+ * <p>读锁对读锁兼容，对写锁不兼容。
+ *
+ * <p>
  * <p>This class has the following properties:
  *
  * <ul>
