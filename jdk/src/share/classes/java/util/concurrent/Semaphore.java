@@ -150,6 +150,11 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  * actions following a successful "acquire" method such as {@code acquire()}
  * in another thread.
  *
+ * <p>{@code Semaphore}的总体设计非常简单，就是使用AQS的共享锁相关方法来实现的。当然，
+ * 其中一个原因也是为了使用{@link AbstractQueuedSynchronizer#setHeadAndPropagate(AbstractQueuedSynchronizer.Node, int)}，
+ * 在使用{@link #release()}等方法成功释放permites后，会唤醒CLH队列中head后的第一个节点，此节点内的线程在重试成功获取锁之后，会调用
+ * setHeadAndPropagate方法唤醒其后续节点，依次传播。而不必等到每一次{@link #release()}之后进行唤醒CLH中的节点。
+ *
  * @since 1.5
  * @author Doug Lea
  */
@@ -162,6 +167,8 @@ public class Semaphore implements java.io.Serializable {
      * Synchronization implementation for semaphore.  Uses AQS state
      * to represent permits. Subclassed into fair and nonfair
      * versions.
+     *
+     * <p>使用AQS state来表示permits
      */
     abstract static class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = 1192457210091910933L;

@@ -128,8 +128,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * the same time).
  *
  * <p>其实CyclicBarrier代码设计的一个关键点是{@link Condition#await()}等方法会阻塞调用该方法的线程并释放该Condition关联的锁，
- * 这样，其它线程才会拿到锁并去递减{@link #count}，直到count减至0，然后执行{@link #barrierCommand}。
- * 换句话说，就是借用{@link AbstractQueuedSynchronizer.ConditionObject#await()}等方法实现的能力来设计的。
+ * 这样，其它线程在执行{@link #await()}方法里的逻辑时才会拿到锁并去递减{@link #count}，直到最后一个线程将count减至0，然后执行{@link #barrierCommand}。
+ * 换句话说，就是借用{@link AbstractQueuedSynchronizer.ConditionObject#await()}等方法实现的能力来设计CyclicBarrier这个类的。
  *
  * <p>Memory consistency effects: Actions in a thread prior to calling
  * {@code await()}
@@ -183,10 +183,15 @@ public class CyclicBarrier {
      */
     private void nextGeneration() {
         // signal completion of last generation
+        // 唤醒因调用trip.await方法的线程，把trip这个Condition的wait queue里的节点移动到该Condition关联的锁的CLH队列中，
         trip.signalAll();
         // set up next generation
         count = parties;
         generation = new Generation();
+        // 注意，因为nextGeneration()方法的调用方dowait()方法退出前才会执行lock.unlock()操作，在unlock()操作中会执行真正的唤醒操作，
+        // 所以，以下逻辑是发生在dowait()方法结束之后的
+        // 被trip.await方法阻塞的线程，之后会在acquireQueued方法里面重试加锁，加锁成功后就会立刻退出trip.await方法，在CyclicBarrier的dowait方法中，
+        // 退出trip.await方法后，会重新判断generation，因为设置了新的generation，所以可以正常退出dowait()方法。
     }
 
     /**
@@ -197,9 +202,11 @@ public class CyclicBarrier {
         generation.broken = true;
         count = parties;
         // 唤醒因调用trip.await方法的线程，把trip这个Condition的wait queue里的节点移动到该Condition关联的锁的CLH队列中，
-        // 之后会在acquireQueued方法里面重试加锁，加锁成功后就会立刻退出await方法，在CyclicBarrier的dowait方法中，退出await方法后，
-        // 会重新判断generation.broken，因为已经置为了true，所以会抛出异常，从而使线程异常退出
         trip.signalAll();
+        // 注意，因为breakBarrier()方法的调用方dowait()方法退出前才会执行lock.unlock()操作，在unlock()操作中会执行真正的唤醒操作，
+        // 所以，以下逻辑是发生在dowait()方法结束之后的
+        // 被trip.await方法阻塞的线程，之后会在acquireQueued方法里面重试加锁，加锁成功后就会立刻退出trip.await方法，在CyclicBarrier的dowait方法中，
+        // 退出trip.await方法后，会重新判断generation.broken，因为已经置为了true，所以会抛出异常，从而使线程异常退出
     }
 
     /**
