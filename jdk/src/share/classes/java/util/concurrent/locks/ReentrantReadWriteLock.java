@@ -466,6 +466,7 @@ public class ReentrantReadWriteLock
                     // Releasing the read lock has no effect on readers,
                     // but it may allow waiting writers to proceed if
                     // both read and write locks are now free.
+                    // 释放读锁对读线程没有任何影响，但是读锁的持有次数减至0，并且写锁的持有次数减至0，才允许获取写锁
                     return nextc == 0;
             }
         }
@@ -548,8 +549,9 @@ public class ReentrantReadWriteLock
 
                     // 在readerShouldBlock()检查之前会检查写锁是否被持有，没有持有才会调用readerShouldBlock()方法
                     // 进行检查CLH队列的head节点之后的第一个节点是否是在等待一个独占锁，如果确实在等待一个独占锁，说明上述在对
-                    // 独占锁的检查 和 readerShouldBlock()检查之间的这一小段时间独占锁被其它线程抢占了，并且有并发的线程在等待。
-                    // 如果出现了这种情况，如果是在为新的线程加读锁，就应该按失败处理。
+                    // 独占锁的检查 和 readerShouldBlock()检查之间的这一小段时间独占锁被抢占了，并且有并发的线程在等待。
+                    // 因为第一次加写锁时，要求c==0，即独占锁和共享锁都不能被持有，而这里检查共享锁的情况，只可能是线程1先加写锁，然后加读锁，然后重入的加写锁；线程2加写锁，阻塞等待。
+                    // 所以，firstReader此时记录的就是持有独占锁的线程，如果是当前线程，那么加以加共享锁。否则，直接返回失败，代码中的其它情况应该不会发生。
 
                     // Make sure we're not acquiring read lock reentrantly
                     if (firstReader == current) {
