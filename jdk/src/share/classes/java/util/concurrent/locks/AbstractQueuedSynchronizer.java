@@ -706,6 +706,7 @@ public abstract class AbstractQueuedSynchronizer
                     // 如果CAS操作失败，表示存在并发，重试即可
                     if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
                         continue;            // loop to recheck cases
+                    // 对h的后继节点里存储的线程进行unpark操作
                     unparkSuccessor(h);
                 }
                 else if (ws == 0 &&
@@ -1009,10 +1010,11 @@ public abstract class AbstractQueuedSynchronizer
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
-                // node是head后面的第一个节点时，重新尝试获取锁
+                // 当node是head后面的第一个节点时，尝试获取锁
                 if (p == head) {
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        // 如果获取锁成功，把node作为新的头结点；如果node的后继在等待一个共享锁，唤醒之。
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         // 如果线程被中断，需要重新设置中断状态。因为parkAndCheckInterrupt方法会调用方法Thread.interrupted()清除中断状态。

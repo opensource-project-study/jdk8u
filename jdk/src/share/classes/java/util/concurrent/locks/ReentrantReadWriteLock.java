@@ -472,7 +472,7 @@ public class ReentrantReadWriteLock
                     // Releasing the read lock has no effect on readers,
                     // but it may allow waiting writers to proceed if
                     // both read and write locks are now free.
-                    // 释放读锁对读线程没有任何影响，但是读锁的持有次数减至0，并且写锁的持有次数减至0，才允许获取写锁
+                    // 释放读锁对读线程没有任何影响，但是读锁的持有次数减至0，并且写锁的持有次数减至0，此时允许获取写锁
                     return nextc == 0;
             }
         }

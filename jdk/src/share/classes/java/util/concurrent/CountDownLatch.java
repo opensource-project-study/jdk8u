@@ -63,6 +63,7 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  * thread from proceeding past an {@link #await await} until all
  * threads could pass.
  *
+ * <p>下面这两个示例演示了CountDownLatch的典型用法。
  * <p><b>Sample usage:</b> Here is a pair of classes in which a group
  * of worker threads use two countdown latches:
  * <ul>
@@ -157,6 +158,11 @@ public class CountDownLatch {
     /**
      * Synchronization control For CountDownLatch.
      * Uses AQS state to represent count.
+     *
+     * <p>CountDownLatch之所以使用共享锁来实现，其中一个原因是CLH队列中缓存的线程重试加锁成功之后，会调用{@link #setHeadAndPropagate(Node, int)}唤醒等待共享锁的后继，
+     * 所以，如果有多个线程调用一个CountDownLatch对象的{@link #await()}进行等待时（会把这些线程封装为Node加入到CLH队列中），当调用{@link #countDown()}将{@link #state}减至0时，
+     * 会唤醒CLH队列头结点后的第一个节点，当CLH队列中第一个线程重试加锁成功，会唤醒其后继，依次传播，所有线程就都会成功获取到锁，从而都完成等待。
+     * 上面Java Doc注释里的示例1中的startSignal即是这种场景。
      */
     private static final class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = 4982264981922014374L;
@@ -180,7 +186,9 @@ public class CountDownLatch {
                 if (c == 0)
                     return false;
                 int nextc = c-1;
+                // if CAS fail, retry in loop
                 if (compareAndSetState(c, nextc))
+                    // 当state减至0时，返回true。上层方法（即AbstractQueuedSynchronizer.releaseShared）就会调用doReleaseShared方法对CLH队列中的节点进行signal
                     return nextc == 0;
             }
         }

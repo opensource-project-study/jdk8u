@@ -34,6 +34,7 @@
  */
 
 package java.util.concurrent;
+import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -51,6 +52,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * This <em>barrier action</em> is useful
  * for updating shared-state before any of the parties continue.
  *
+ * <p>下面这个示例演示了CyclicBarrier的典型用法
  * <p><b>Sample usage:</b> Here is an example of using a barrier in a
  * parallel decomposition design:
  *
@@ -60,6 +62,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *   final float[][] data;
  *   final CyclicBarrier barrier;
  *
+ *   // 这里的Worker是一个普通的内部类
  *   class Worker implements Runnable {
  *     int myRow;
  *     Worker(int row) { myRow = row; }
@@ -123,6 +126,10 @@ import java.util.concurrent.locks.ReentrantLock;
  * abnormally via {@link BrokenBarrierException} (or
  * {@link InterruptedException} if they too were interrupted at about
  * the same time).
+ *
+ * <p>其实CyclicBarrier代码设计的一个关键点是{@link Condition#await()}等方法会阻塞调用该方法的线程并释放该Condition关联的锁，
+ * 这样，其它线程才会拿到锁并去递减{@link #count}，直到count减至0，然后执行{@link #barrierCommand}。
+ * 换句话说，就是借用{@link AbstractQueuedSynchronizer.ConditionObject#await()}等方法实现的能力来设计的。
  *
  * <p>Memory consistency effects: Actions in a thread prior to calling
  * {@code await()}
@@ -189,6 +196,9 @@ public class CyclicBarrier {
     private void breakBarrier() {
         generation.broken = true;
         count = parties;
+        // 唤醒因调用trip.await方法的线程，把trip这个Condition的wait queue里的节点移动到该Condition关联的锁的CLH队列中，
+        // 之后会在acquireQueued方法里面重试加锁，加锁成功后就会立刻退出await方法，在CyclicBarrier的dowait方法中，退出await方法后，
+        // 会重新判断generation.broken，因为已经置为了true，所以会抛出异常，从而使线程异常退出
         trip.signalAll();
     }
 
@@ -203,9 +213,11 @@ public class CyclicBarrier {
         try {
             final Generation g = generation;
 
+            // 如果其它线程调用breakBarrier()方法把generation.broker置为了true，直接抛出异常
             if (g.broken)
                 throw new BrokenBarrierException();
 
+            // 如果当前线程被中断，调用breakBarrier()，然后抛出中断异常
             if (Thread.interrupted()) {
                 breakBarrier();
                 throw new InterruptedException();
@@ -222,6 +234,7 @@ public class CyclicBarrier {
                     nextGeneration();
                     return 0;
                 } finally {
+                    // 如果command.run()抛出了异常，调用breakBarrier()
                     if (!ranAction)
                         breakBarrier();
                 }
@@ -249,9 +262,12 @@ public class CyclicBarrier {
                 if (g.broken)
                     throw new BrokenBarrierException();
 
+                // 说明count递减为了0，barrierCommand正常执行完成，然后执行nextGeneration()更新generation，此时，正常退出。
+                // 当然，也可能是调用了reset()方法开始一个新的generation
                 if (g != generation)
                     return index;
 
+                // 超时，抛出异常
                 if (timed && nanos <= 0L) {
                     breakBarrier();
                     throw new TimeoutException();
