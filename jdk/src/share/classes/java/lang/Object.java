@@ -283,7 +283,7 @@ public class Object {
      * the awakened threads enjoy no reliable privilege or disadvantage in
      * being the next thread to lock this object.
      * <p>当前线程必须先获取object的monitor，才能调用{@code notify}和{@code notifyAll}方法，否则会抛出异常{@link IllegalMonitorStateException}
-     * 被唤醒的线程不能马上得到执行，等到当前线程释放object上的锁之后，被唤醒的线程和任何其它线程一起重新竞争获取object的monitor，获取成功之后才能继续执行。
+     * 被唤醒的线程只是从object的wait set中移除掉，并不能马上得到执行，等到当前线程释放object上的锁之后，被唤醒的线程和任何其它线程一起重新竞争获取object的monitor，获取成功之后才能继续执行。
      *
      * <p>
      * This method should only be called by a thread that is the owner
@@ -371,6 +371,8 @@ public class Object {
      * a monitor.
      *
      * @param      timeout   the maximum time to wait in milliseconds.
+     *                       If {@code timeout} is zero, however, then real time is not taken into
+     *                       consideration and the thread simply waits until notified.
      * @throws  IllegalArgumentException      if the value of timeout is
      *               negative.
      * @throws  IllegalMonitorStateException  if the current thread is not
@@ -479,9 +481,9 @@ public class Object {
      * re-obtain ownership of the monitor and resumes execution.
      * <p>当前线程必须先拥有object的monitor（一般用synchronized关键字获取对象的monitor lock），
      * 然后才能调用object的{@code wait}方法，否则会抛出{@link IllegalMonitorStateException}，
-     * 调用{@code wait}方法之后，当前线程释放object monitor的所有权，进行等待，阻塞当前线程，直到其它线程通过调用object的
-     * {@link #notify()}或者{@link #notifyAll()}方法进行唤醒。当前线程被唤醒之后，尝试重新获取monitor，获取成功
-     * 之后，该wait方法立刻返回。如果获取monitor失败，继续阻塞等待，直到获取成功。
+     * 调用{@code wait}方法之后，把当前线程放入到object的wait set，然后释放object monitor的所有权，当前线程被阻塞，禁止对其进行线程调度，直到其它线程通过调用object的
+     * {@link #notify()}或者{@link #notifyAll()}方法进行唤醒。当前线程被唤醒之后，从object的wait set中移除，然后尝试重新获取monitor，获取成功
+     * 之后，该wait方法立刻返回。如果获取monitor失败，继续阻塞等待，直到获取成功。这些内容在{@link #wait(long)}方法的注释上已经写的非常清楚。
      *
      * <p>
      * As in the one argument version, interrupts and spurious wakeups are
@@ -505,7 +507,7 @@ public class Object {
      *             was waiting for a notification.  The <i>interrupted
      *             status</i> of the current thread is cleared when
      *             this exception is thrown.
-     *             在调用{@code notify}或{@code notifyAll} 唤醒之前或之中对当前线程进行中断，该方法才会抛出{@link InterruptedException}，
+     *             在调用{@code notify}或{@code notifyAll} 唤醒当前线程之前或之中对当前线程进行中断，该方法才会抛出{@link InterruptedException}，
      *             换句话说，如果当前线程已经被唤醒，正在竞争object monitor，如果此时对当前线程进行中断，则该方法不会抛出{@link InterruptedException}
      * @see        java.lang.Object#notify()
      * @see        java.lang.Object#notifyAll()

@@ -290,6 +290,7 @@ class Thread implements Runnable {
      * execution) for the specified number of milliseconds, subject to
      * the precision and accuracy of system timers and schedulers. The thread
      * does not lose ownership of any monitors.
+     * <p>线程在睡眠期间不会失去任何monitor的所有权。
      *
      * @param  millis
      *         the length of time to sleep in milliseconds
