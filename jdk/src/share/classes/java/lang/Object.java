@@ -242,6 +242,7 @@ public class Object {
      * is chosen to be awakened. The choice is arbitrary and occurs at
      * the discretion of the implementation. A thread waits on an object's
      * monitor by calling one of the {@code wait} methods.
+     * <p>唤醒一个等待object monitor的线程；如果有多个线程在等待，随机选取一个进行唤醒。
      * <p>
      * The awakened thread will not be able to proceed until the current
      * thread relinquishes the lock on this object. The awakened thread will
@@ -281,6 +282,9 @@ public class Object {
      * be actively competing to synchronize on this object; for example,
      * the awakened threads enjoy no reliable privilege or disadvantage in
      * being the next thread to lock this object.
+     * <p>当前线程必须先获取object的monitor，才能调用{@code notify}和{@code notifyAll}方法，否则会抛出异常{@link IllegalMonitorStateException}
+     * 被唤醒的线程不能马上得到执行，等到当前线程释放object上的锁之后，被唤醒的线程和任何其它线程一起重新竞争获取object的monitor，获取成功之后才能继续执行。
+     *
      * <p>
      * This method should only be called by a thread that is the owner
      * of this object's monitor. See the {@code notify} method for a
@@ -473,6 +477,12 @@ public class Object {
      * either through a call to the {@code notify} method or the
      * {@code notifyAll} method. The thread then waits until it can
      * re-obtain ownership of the monitor and resumes execution.
+     * <p>当前线程必须先拥有object的monitor（一般用synchronized关键字获取对象的monitor lock），
+     * 然后才能调用object的{@code wait}方法，否则会抛出{@link IllegalMonitorStateException}，
+     * 调用{@code wait}方法之后，当前线程释放object monitor的所有权，进行等待，阻塞当前线程，直到其它线程通过调用object的
+     * {@link #notify()}或者{@link #notifyAll()}方法进行唤醒。当前线程被唤醒之后，尝试重新获取monitor，获取成功
+     * 之后，该wait方法立刻返回。如果获取monitor失败，继续阻塞等待，直到获取成功。
+     *
      * <p>
      * As in the one argument version, interrupts and spurious wakeups are
      * possible, and this method should always be used in a loop:
@@ -495,6 +505,8 @@ public class Object {
      *             was waiting for a notification.  The <i>interrupted
      *             status</i> of the current thread is cleared when
      *             this exception is thrown.
+     *             在调用{@code notify}或{@code notifyAll} 唤醒之前或之中对当前线程进行中断，该方法才会抛出{@link InterruptedException}，
+     *             换句话说，如果当前线程已经被唤醒，正在竞争object monitor，如果此时对当前线程进行中断，则该方法不会抛出{@link InterruptedException}
      * @see        java.lang.Object#notify()
      * @see        java.lang.Object#notifyAll()
      */

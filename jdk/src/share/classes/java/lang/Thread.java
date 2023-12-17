@@ -270,6 +270,8 @@ class Thread implements Runnable {
      * its current use of a processor. The scheduler is free to ignore this
      * hint.
      *
+     * <p>当前线程愿意让出正在使用的CPU，是给线程调度器的一个提示，调度器可以自由忽略这个提示。
+     *
      * <p> Yield is a heuristic attempt to improve relative progression
      * between threads that would otherwise over-utilise a CPU. Its use
      * should be combined with detailed profiling and benchmarking to
