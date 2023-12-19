@@ -161,6 +161,15 @@ public class FutureTask<V> implements RunnableFuture<V> {
         return state != NEW;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>只有state为NEW，并且使用CAS操作将state从NEW置为INTERRUPTING或CANCELLED成功之后，才允许cancel，这里的CAS操作主要是为了处理并发，
+     * cancel成功之后，{@link #callable}就不会被执行了，因为{@link #run()}方法会检查state的状态。
+     *
+     * @param mayInterruptIfRunning
+     * @return
+     */
     public boolean cancel(boolean mayInterruptIfRunning) {
         if (!(state == NEW &&
               UNSAFE.compareAndSwapInt(this, stateOffset, NEW,
@@ -257,6 +266,7 @@ public class FutureTask<V> implements RunnableFuture<V> {
             !UNSAFE.compareAndSwapObject(this, runnerOffset,
                                          null, Thread.currentThread()))
             return;
+        // state为NEW，并且通过CAS操作将runner从null置为当前线程成功之后，才允许执行以下逻辑
         try {
             Callable<V> c = callable;
             if (c != null && state == NEW) {
@@ -268,8 +278,10 @@ public class FutureTask<V> implements RunnableFuture<V> {
                 } catch (Throwable ex) {
                     result = null;
                     ran = false;
+                    // 如果出现异常，把异常也用outcome记录（最终report方法会报一个异常），更改state状态为EXCEPTIONAL，移除并唤醒等待线程
                     setException(ex);
                 }
+                // callable正常执行结束之后，设置结果，更改state状态为NORMAL，移除并唤醒等待线程
                 if (ran)
                     set(result);
             }
@@ -364,11 +376,13 @@ public class FutureTask<V> implements RunnableFuture<V> {
     private void finishCompletion() {
         // assert state > COMPLETING;
         for (WaitNode q; (q = waiters) != null;) {
+            // 首先，使用CAS操作将waiters置为null
             if (UNSAFE.compareAndSwapObject(this, waitersOffset, q, null)) {
                 for (;;) {
                     Thread t = q.thread;
                     if (t != null) {
                         q.thread = null;
+                        // 对t进行unpark操作，以对等待线程解除阻塞
                         LockSupport.unpark(t);
                     }
                     WaitNode next = q.next;
@@ -405,6 +419,7 @@ public class FutureTask<V> implements RunnableFuture<V> {
             }
 
             int s = state;
+            // callable执行完成后，直接返回
             if (s > COMPLETING) {
                 if (q != null)
                     q.thread = null;
@@ -413,16 +428,21 @@ public class FutureTask<V> implements RunnableFuture<V> {
             else if (s == COMPLETING) // cannot time out yet
                 Thread.yield();
             else if (q == null)
+                // 把当前等待结果的线程封装为一个节点
                 q = new WaitNode();
             else if (!queued)
+                // q.next先指向waiters，然后waiters更新为q，相当于把q插入到waiters的头结点
                 queued = UNSAFE.compareAndSwapObject(this, waitersOffset,
                                                      q.next = waiters, q);
             else if (timed) {
                 nanos = deadline - System.nanoTime();
+                // nanos表示剩余的超时时间，如果<=0，说明已经超时，将当前线程从等待链表中移除，直接返回即可。
                 if (nanos <= 0L) {
                     removeWaiter(q);
                     return state;
                 }
+                // 使用nanos作为park操作的超时时间，阻塞当前线程
+                // callable执行完成后会对等待线程执行unpark操作，然后当前线程解除阻塞，进入for循环的下一次迭代
                 LockSupport.parkNanos(this, nanos);
             }
             else
@@ -450,10 +470,13 @@ public class FutureTask<V> implements RunnableFuture<V> {
                     if (q.thread != null)
                         pred = q;
                     else if (pred != null) {
+                        // 当node不是头结点时，pred的next指向node的后继，从而将node移除
                         pred.next = s;
+                        // 如果此时pred.thread为null，说明存在并发的线程在调用本方法，只需从外层循环重新执行，将该pred节点移除即可。
                         if (pred.thread == null) // check for race
                             continue retry;
                     }
+                    // node在头结点，直接更新waiters，使其指向node的后继，相当于将node移除
                     else if (!UNSAFE.compareAndSwapObject(this, waitersOffset,
                                                           q, s))
                         continue retry;
