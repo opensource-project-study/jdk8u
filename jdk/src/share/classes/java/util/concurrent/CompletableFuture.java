@@ -572,7 +572,8 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 a.postComplete();
         }
         if (result != null && stack != null) {
-            // 返回this后，在postComplete()方法中就会弹出当前CompletableFuture的stack中的Completion对象，以此实现嵌套的调用，直到最后的Signaller对象
+            // 返回this后，在postComplete()方法中就会弹出当前CompletableFuture的stack中的Completion对象，以此实现递归的调用，直到最后的Signaller对象
+            // 当然，如果不是递归调用，因为该CompletableFuture确实计算完成了，所以调用一下postComplete()方法即可。
             if (mode < 0)
                 return this;
             else
@@ -1063,10 +1064,29 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         }
     }
 
-    /** Post-processing after successful BiCompletion tryFire. */
+    /**
+     * Post-processing after successful BiCompletion tryFire.
+     * <p>{@link BiCompletion}的子类在方法{@code tryFire(int)}中先调用下列方法检查src和snd的计算情况，以确定要不要走postFire这个方法
+     * <p>如果是{@link BiRelay}，调用{@link BiCompletion#dep}#biRelay(src,snd)
+     * <p>如果是{@link OrRelay}，调用{@link BiCompletion#dep}#orRelay(src,snd)
+     * <p>...
+     *
+     * 如果上述方法检查通过，则说明依赖src和snd的CompletableFuture即dep计算完成。
+     *
+     * @param a
+     * @param b
+     * @param mode
+     * @return
+     */
     final CompletableFuture<T> postFire(CompletableFuture<?> a,
                                         CompletableFuture<?> b, int mode) {
         if (b != null && b.stack != null) { // clean second source
+            // 如果mode<0，即mode为NESTED，说明就是保存a和b的BiCompletion的子类的实例的tryFire方法调用过来的，并且tryFire方法是从a或者b的postComplete()方法调用过来的，
+            // 因为在tryFire方法中已经把BiCompletion#dep置为null，所以BiCompletion#isAlive()方法为false，在src#cleanStack()和snd#cleanStack()方法中就能将该Completion移除，
+            // 换句话说，dep计算完成，就应该把保存该dep的Completion从src和snd的stack中移除，因为不需要再触发该Completion了。
+            //
+            // 因为dep计算完成并不一定需要src和snd同时完成，例如OrRelay，所以在构建依赖树的时候，发现dep已经计算完成，如果src或者snd还没有计算完成，就可以把Completion从它们的stack的栈顶移除，
+            // 而不必等到计算完成之后再调用postComplete()方法；当然，如果src或者snd确实计算完成了，那么就调用其postComplete()方法，其实最后还是会调用到cleanStack()方法。
             if (mode < 0 || b.result == null)
                 b.cleanStack();
             else
