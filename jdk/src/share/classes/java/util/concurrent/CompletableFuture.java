@@ -216,7 +216,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      */
 
     volatile Object result;       // Either the result or boxed AltResult
-    volatile Completion stack;    // Top of Treiber stack of dependent actions
+    volatile Completion stack;    // Top of Treiber stack of dependent actions，使用单向链表来模拟栈
 
     final boolean internalComplete(Object r) { // CAS from null to r
         return UNSAFE.compareAndSwapObject(this, RESULT, null, r);
@@ -466,6 +466,9 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     /**
      * Pops and tries to trigger all reachable dependents.  Call only
      * when known to be done.
+     * <p>沿stack引用依次弹出Completion实例，触发执行之，因为Completion实例中保存有依赖当前CompletableFuture的其它CompletableFuture，
+     * 相当于每次一个CompletableFuture计算完成后，都触发一次依赖该CompletableFuture的其它CompletableFuture，可以对照{@link #andTree(CompletableFuture[], int, int)}
+     * 注释上的图示进行理解。
      */
     final void postComplete() {
         /*
@@ -569,6 +572,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 a.postComplete();
         }
         if (result != null && stack != null) {
+            // 返回this后，在postComplete()方法中就会弹出当前CompletableFuture的stack中的Completion对象，以此实现嵌套的调用，直到最后的Signaller对象
             if (mode < 0)
                 return this;
             else
@@ -1046,10 +1050,13 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     final void bipush(CompletableFuture<?> b, BiCompletion<?,?,?> c) {
         if (c != null) {
             Object r;
+            // 如果当前CompletableFuture没有计算完成，把c压入当前CompletableFuture的stack栈顶
             while ((r = result) == null && !tryPushStack(c))
                 lazySetNext(c, null); // clear on failure
             if (b != null && b != this && b.result == null) {
+                // 如果此时当前的CompletableFuture计算完成，把c封装为一个CoCompletion对象
                 Completion q = (r != null) ? c : new CoCompletion(c);
+                // 如果b没有计算完成，把q压入b的stack栈顶
                 while (b.result == null && !b.tryPushStack(q))
                     lazySetNext(q, null); // clear on failure
             }
@@ -1283,6 +1290,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             CompletableFuture<U> b;
             if ((d = dep) == null || !d.biRelay(a = src, b = snd))
                 return null;
+            // a和b都计算完成之后，BiRelay中相应属性都置为null，以便调用cleanStack()方法时进行清理该Completion
             src = null; snd = null; dep = null;
             return d.postFire(a, b, mode);
         }
@@ -1290,6 +1298,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     boolean biRelay(CompletableFuture<?> a, CompletableFuture<?> b) {
         Object r, s; Throwable x;
+        // a和b只要有一个没有计算完成，就返回false
         if (a == null || (r = a.result) == null ||
             b == null || (s = b.result) == null)
             return false;
@@ -1299,12 +1308,72 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             else if (s instanceof AltResult && (x = ((AltResult)s).ex) != null)
                 completeThrowable(x, s);
             else
+                // a和b都已计算完成，为依赖a和b的当前CompletableFuture设置结果，表示当前CompletableFuture计算完成
                 completeNull();
         }
         return true;
     }
 
-    /** Recursively constructs a tree of completions. */
+    /**
+     * Recursively constructs a tree of completions.
+     * <p>整个结构是一个经典的递归结构，使用分治策略来实现，可以查看dsa-java项目的Arrays#mergeSort方法。
+     * <p>最终实现了一个由{@link #stack}引用进行链接的类似于树的结构。
+     * <p>假设cfs={c1, c2}，即传过来2个{@code CompletableFuture}，则这些CompletableFuture的依赖关系如下所示：
+     * <pre>
+     * c1       c2
+     * |--------|
+     *      |
+     *     d1
+     * </pre>
+     *
+     * <p>如果加上{@link #stack}引用，完整的图示如下：
+     * <pre>
+     * c1.stack       c2.stack
+     *     |--------------|
+     *            |
+     *         BiRelay
+     *  (dep=d1,src=c1,snd=c2)
+     *           d1
+     *           |
+     *           |
+     *       Signaller
+     * </pre>
+     * <p>当然，这里简化了图示，例如没有把CoCompletion画出来。
+     *
+     * <p>假设cfs={c1, c2, c3}，即传过来3个{@code CompletableFuture}，则这些CompletableFuture的依赖关系如下所示：
+     * <pre>
+     * c1       c2      c3      c3
+     * |--------|       |-------|
+     *      |               |
+     *     d1              d2
+     *      |---------------|
+     *              |
+     *             d3
+     * </pre>
+     *
+     * <p>如果加上{@link #stack}引用，完整的图示如下：
+     * c1.stack       c2.stack      c3.stack      c3.stack
+     *     |--------------|             |-------------|
+     *            |                            |
+     *         BiRelay                      BiRelay
+     *  (dep=d1,src=c1,snd=c2)       (dep=d2,src=c3,snd=c3)
+     *           d1                           d2
+     *            |----------------------------|
+     *                          |
+     *                       BiRelay
+     *                (dep=d3,src=d1,snd=d2)
+     *                          d3
+     *                          |
+     *                          |
+     *                      Signaller
+     *
+     * <p>其它个数的CompletableFuture的图示以此类推。
+     *
+     * @param cfs
+     * @param lo inclusive
+     * @param hi inclusive
+     * @return
+     */
     static CompletableFuture<Void> andTree(CompletableFuture<?>[] cfs,
                                            int lo, int hi) {
         CompletableFuture<Void> d = new CompletableFuture<Void>();
@@ -1318,9 +1387,12 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 (b = (lo == hi ? a : (hi == mid+1) ? cfs[hi] :
                       andTree(cfs, mid+1, hi)))  == null)
                 throw new NullPointerException();
+            // 如果a, b有一个没有完成计算，生成一个BiRelay对象，把d需要依赖a和b计算完成 这个关系保存下来
             if (!d.biRelay(a, b)) {
                 BiRelay<?,?> c = new BiRelay<>(d, a, b);
+                // 把c压入a和b的stack栈顶
                 a.bipush(b, c);
+                // 同步进行tryFire，再次检查a和b是否计算完成
                 c.tryFire(SYNC);
             }
         }
@@ -1332,6 +1404,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
     /** Pushes completion to this and b unless either done. */
     final void orpush(CompletableFuture<?> b, BiCompletion<?,?,?> c) {
         if (c != null) {
+            // 当前CompletableFuture和b都没有计算完成时，才考虑把c压入stack栈顶
             while ((b == null || b.result == null) && result == null) {
                 if (tryPushStack(c)) {
                     if (b != null && b != this && b.result == null) {
@@ -1552,9 +1625,11 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     final boolean orRelay(CompletableFuture<?> a, CompletableFuture<?> b) {
         Object r;
+        // a和b都没有计算完成时，才返回false
         if (a == null || b == null ||
             ((r = a.result) == null && (r = b.result) == null))
             return false;
+        // a和b只要有一个计算完成，依赖a和b的当前CompletableFuture就计算完成，为其设置结果
         if (result == null)
             completeRelay(r);
         return true;
@@ -1601,11 +1676,14 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 dep = null; fn = null;
                 if (d.result == null) {
                     try {
+                        // 执行结束之后，设置结果
                         d.completeValue(f.get());
                     } catch (Throwable ex) {
+                        // 如果出现了异常，把异常封装为AltResult实例，将其设置为结果
                         d.completeThrowable(ex);
                     }
                 }
+                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例
                 d.postComplete();
             }
         }
@@ -1693,6 +1771,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 if (i > 0)
                     return true;
             }
+            // deadline!=0时，才判断是否超时
             if (deadline != 0L &&
                 (nanos <= 0L || (nanos = deadline - System.nanoTime()) <= 0L)) {
                 thread = null;
@@ -1722,6 +1801,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         int spins = -1;
         Object r;
         while ((r = result) == null) {
+            // 使用park操作阻塞当前线程前，先尝试自旋
             if (spins < 0)
                 spins = SPINS;
             else if (spins > 0) {
@@ -1763,28 +1843,35 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      * throws TimeoutException on timeout.
      */
     private Object timedGet(long nanos) throws TimeoutException {
+        // 如果当前线程被中断，直接返回null
         if (Thread.interrupted())
             return null;
+        // nanos参数要大于0
         if (nanos <= 0L)
             throw new TimeoutException();
         long d = System.nanoTime() + nanos;
+        // 因为d==0表示在Signaller中表示不检查超时时间，所以d==0即溢出时，将其置为1再传给Signaller
         Signaller q = new Signaller(true, nanos, d == 0L ? 1L : d); // avoid 0
         boolean queued = false;
         Object r;
         // We intentionally don't spin here (as waitingGet does) because
         // the call to nanoTime() above acts much like a spin.
         while ((r = result) == null) {
+            // 第一次迭代时，把Signaller实例压入stack的栈顶
             if (!queued)
                 queued = tryPushStack(q);
             else if (q.interruptControl < 0 || q.nanos <= 0L) {
                 q.thread = null;
                 cleanStack();
+                // 如果当前线程被中断，直接返回null
                 if (q.interruptControl < 0)
                     return null;
+                // 如果等待超时，抛出超时异常
                 throw new TimeoutException();
             }
             else if (q.thread != null && result == null) {
                 try {
+                    // Signaller实例使用park操作阻塞当前线程，直到当前的CompletableFuture计算完成，最终调用到Signaller#tryFire方法，该方法调用LockSupport#unpark方法对当前线程进行unpark
                     ForkJoinPool.managedBlock(q);
                 } catch (InterruptedException ie) {
                     q.interruptControl = -1;
