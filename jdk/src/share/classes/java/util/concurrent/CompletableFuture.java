@@ -486,8 +486,14 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                         pushStack(h);
                         continue;
                     }
+                    // 因为f==this，并且f的stack已经指向h.next，所以把h分离出来，然后执行h的tryFire方法即可
                     h.next = null;    // detach
                 }
+                // tryFire方法返回null之后，就可以继续弹出当前CompletableFuture的stack里面的Completion，
+                // 例如，两个线程对一个CompletableFuture执行get()，那么该CompletableFuture的stack中就会有两个Signaller类型的Completion，
+                // 第一个Siganller#tryFire执行后返回一个null，然后这里就可以继续弹出另一个Signaller进行执行。所以，tryFire方法返回的null是有意义的。
+                //
+                // 当然，如果tryFire方法返回的不是null，就沿着依赖树继续触发，参考andTree方法注释上的图示。
                 f = (d = h.tryFire(NESTED)) == null ? this : d;
             }
         }
