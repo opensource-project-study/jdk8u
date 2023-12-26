@@ -569,6 +569,16 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      * Post-processing by dependent after successful UniCompletion
      * tryFire.  Tries to clean stack of source a, and then either runs
      * postComplete or returns this to caller, depending on mode.
+     *
+     * <p>要么是从{@link #postFire(CompletableFuture, CompletableFuture, int)}调用过来的，用于{@link BiCompletion#dep}计算完成后，清除{@link BiCompletion#src}的stack
+     *
+     * <p>{@link UniCompletion}的直接子类在方法{@code tryFire(int)}中先调用下列方法检查src的计算情况，以确定要不要走postFire这个方法
+     * <p>如果是{@link UniWhenComplete}，调用{@link UniCompletion#dep}#uniWhenComplete(src, BiConsumer, UniWhenComplete)
+     * <p>如果是{@link UniHandle}，调用{@link UniCompletion#dep}#java.util.concurrent.CompletableFuture#uniHandle(src, BiFunction, UniHandle)
+     * <p>...
+     *
+     * <p>如果上述方法检查通过，则说明依赖src的CompletableFuture即dep计算完成。就可以将src的stack中不存活的Completion清除掉。
+     *
      */
     final CompletableFuture<T> postFire(CompletableFuture<?> a, int mode) {
         if (a != null && a.stack != null) {
@@ -796,13 +806,36 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return true;
     }
 
+    /**
+     * CompletableFuture的依赖关系如下所示：
+     * <pre>
+     * this
+     *  |
+     *  d
+     * </pre>
+     *
+     * <p>如果加上{@link #stack}引用，完整的图示如下：
+     * <pre>
+     *  this.stack
+     *       |
+     * UniWhenComplete
+     * (dep=d,src=this)
+     *       d
+     * </pre>
+     *
+     * @param e
+     * @param f
+     * @return
+     */
     private CompletableFuture<T> uniWhenCompleteStage(
         Executor e, BiConsumer<? super T, ? super Throwable> f) {
         if (f == null) throw new NullPointerException();
         CompletableFuture<T> d = new CompletableFuture<T>();
+        // 如果当前CompletableFuture没有计算完成，创建一个UniWhenComplete实例，并将其压入this.stack的栈顶
         if (e != null || !d.uniWhenComplete(this, f, null)) {
             UniWhenComplete<T> c = new UniWhenComplete<T>(e, d, this, f);
             push(c);
+            // 再次检查当前CompletableFuture是否计算完成
             c.tryFire(SYNC);
         }
         return d;
@@ -1077,7 +1110,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      * <p>如果是{@link OrRelay}，调用{@link BiCompletion#dep}#orRelay(src,snd)
      * <p>...
      *
-     * 如果上述方法检查通过，则说明依赖src和snd的CompletableFuture即dep计算完成。
+     * <p>如果上述方法检查通过，则说明依赖src和snd的CompletableFuture即dep计算完成。就可以将src和snd的stack中不存活的Completion清除掉。
      *
      * @param a
      * @param b
@@ -1359,7 +1392,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      *            |
      *         BiRelay
      *  (dep=d1,src=c1,snd=c2)
-     *           d1
+     *        d1.stack
      *           |
      *           |
      *       Signaller
@@ -1378,20 +1411,22 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      * </pre>
      *
      * <p>如果加上{@link #stack}引用，完整的图示如下：
+     * <pre>
      * c1.stack       c2.stack      c3.stack      c3.stack
      *     |--------------|             |-------------|
      *            |                            |
      *         BiRelay                      BiRelay
      *  (dep=d1,src=c1,snd=c2)       (dep=d2,src=c3,snd=c3)
-     *           d1                           d2
+     *         d1.stack                     d2.stack
      *            |----------------------------|
      *                          |
      *                       BiRelay
      *                (dep=d3,src=d1,snd=d2)
-     *                          d3
+     *                       d3.stack
      *                          |
      *                          |
      *                      Signaller
+     * </pre>
      *
      * <p>其它个数的CompletableFuture的图示以此类推。
      *
@@ -1742,11 +1777,14 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 if (d.result == null) {
                     try {
                         f.run();
+                        // 计算完成后，设置结果为NIL
                         d.completeNull();
                     } catch (Throwable ex) {
+                        // 如果出现了异常，把异常封装为AltResult实例，将其设置为结果
                         d.completeThrowable(ex);
                     }
                 }
+                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例
                 d.postComplete();
             }
         }
