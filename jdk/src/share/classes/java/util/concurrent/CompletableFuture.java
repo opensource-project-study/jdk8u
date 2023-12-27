@@ -549,6 +549,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 if (e == null)
                     return true;
                 executor = null; // disable
+                // 提交该task到线程池，执行task时会调用Completion#run方法，run方法会调用tryFire(ASYNC)方法
                 e.execute(this);
             }
             return false;
@@ -574,10 +575,10 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
      *
      * <p>{@link UniCompletion}的直接子类在方法{@code tryFire(int)}中先调用下列方法检查src的计算情况，以确定要不要走postFire这个方法
      * <p>如果是{@link UniWhenComplete}，调用{@link UniCompletion#dep}#uniWhenComplete(src, BiConsumer, UniWhenComplete)
-     * <p>如果是{@link UniHandle}，调用{@link UniCompletion#dep}#java.util.concurrent.CompletableFuture#uniHandle(src, BiFunction, UniHandle)
+     * <p>如果是{@link UniHandle}，调用{@link UniCompletion#dep}#uniHandle(src, BiFunction, UniHandle)
      * <p>...
      *
-     * <p>如果上述方法检查通过，则说明依赖src的CompletableFuture即dep计算完成。就可以将src的stack中不存活的Completion清除掉。
+     * <p>如果上述方法检查通过，则说明依赖src的CompletableFuture即dep计算完成。就可以调用该postFire方法将src的stack中不存活的Completion清除掉。
      *
      */
     final CompletableFuture<T> postFire(CompletableFuture<?> a, int mode) {
@@ -633,6 +634,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             try {
                 if (c != null && !c.claim())
                     return false;
+                // a的计算结果作为f的参数，f执行的结果作为当前CompletableFuture的结果
                 @SuppressWarnings("unchecked") S s = (S) r;
                 completeValue(f.apply(s));
             } catch (Throwable ex) {
@@ -642,6 +644,19 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return true;
     }
 
+    /**
+     * CompletableFuture的依赖关系如下所示：
+     * <pre>
+     *     this
+     *       |
+     *       d
+     * </pre>
+     *
+     * @param e
+     * @param f
+     * @param <V>
+     * @return
+     */
     private <V> CompletableFuture<V> uniApplyStage(
         Executor e, Function<? super T,? extends V> f) {
         if (f == null) throw new NullPointerException();
@@ -687,6 +702,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             try {
                 if (c != null && !c.claim())
                     return false;
+                // a的计算结果作为f的参数
                 @SuppressWarnings("unchecked") S s = (S) r;
                 f.accept(s);
                 completeNull();
@@ -697,6 +713,17 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return true;
     }
 
+    /**
+     * CompletableFuture的依赖关系如下所示：
+     * <pre>
+     *     this
+     *       |
+     *       d
+     * </pre>
+     * @param e
+     * @param f
+     * @return
+     */
     private CompletableFuture<Void> uniAcceptStage(Executor e,
                                                    Consumer<? super T> f) {
         if (f == null) throw new NullPointerException();
@@ -746,6 +773,18 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return true;
     }
 
+    /**
+     * CompletableFuture的依赖关系如下所示：
+     * <pre>
+     *     this
+     *       |
+     *       d
+     * </pre>
+     *
+     * @param e
+     * @param f
+     * @return
+     */
     private CompletableFuture<Void> uniRunStage(Executor e, Runnable f) {
         if (f == null) throw new NullPointerException();
         CompletableFuture<Void> d = new CompletableFuture<Void>();
@@ -783,6 +822,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             return false;
         if (result == null) {
             try {
+                // c为null的情况要么是uniWhenCompleteStage方法第一调用该方法检查，要么是c提交到了线程池里异步执行了
                 if (c != null && !c.claim())
                     return false;
                 if (r instanceof AltResult) {
@@ -792,7 +832,9 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                     @SuppressWarnings("unchecked") T tr = (T) r;
                     t = tr;
                 }
+                // a的结果作为f的参数
                 f.accept(t, x);
+                // 如果f正常执行完成，设置a的结果为当前CompletableFuture的结果，返回
                 if (x == null) {
                     internalComplete(r);
                     return true;
@@ -801,6 +843,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 if (x == null)
                     x = ex;
             }
+            // 如果发生异常，将异常返回
             completeThrowable(x, r);
         }
         return true;
@@ -877,6 +920,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                     @SuppressWarnings("unchecked") S ss = (S) r;
                     s = ss;
                 }
+                // 将a的结果作为f的参数，f执行结束后，将f的结果作为当前CompletableFuture的结果
                 completeValue(f.apply(s, x));
             } catch (Throwable ex) {
                 completeThrowable(ex);
@@ -1006,6 +1050,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
             try {
                 if (c != null && !c.claim())
                     return false;
+                // 将a的计算结果作为f的参数，生成g，当前CompletableFuture依赖g
                 @SuppressWarnings("unchecked") S s = (S) r;
                 CompletableFuture<T> g = f.apply(s).toCompletableFuture();
                 if (g.result == null || !uniRelay(g)) {
@@ -1022,6 +1067,19 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         return true;
     }
 
+    /**
+     * CompletableFuture的依赖关系如下所示：
+     * <pre>
+     *     this         f.apply(this.result).toCompletableFuture() => g
+     *       |                                                        |
+     *       d                                                        d
+     * </pre>
+     *
+     * @param e
+     * @param f
+     * @param <V>
+     * @return
+     */
     private <V> CompletableFuture<V> uniComposeStage(
         Executor e, Function<? super T, ? extends CompletionStage<V>> f) {
         if (f == null) throw new NullPointerException();
@@ -1049,6 +1107,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 return new CompletableFuture<V>(encodeThrowable(ex));
             }
         }
+        // 当使用了线程池或者当前CompletableFuture还未计算完成时，创建一个UniCompose实例，压入当前CompletableFuture的stack的栈顶
         CompletableFuture<V> d = new CompletableFuture<V>();
         UniCompose<T,V> c = new UniCompose<T,V>(e, d, this, f);
         push(c);
@@ -1744,7 +1803,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                         d.completeThrowable(ex);
                     }
                 }
-                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例
+                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例，当然，其实触发的是d的stack中的Completion
                 d.postComplete();
             }
         }
@@ -1784,7 +1843,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                         d.completeThrowable(ex);
                     }
                 }
-                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例
+                // 尝试触发依赖此CompletableFuture的其它CompletableFuture实例，当然，其实触发的是d的stack中的Completion
                 d.postComplete();
             }
         }
