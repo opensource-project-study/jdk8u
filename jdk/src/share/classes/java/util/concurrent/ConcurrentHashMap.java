@@ -2235,11 +2235,18 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      */
     private final Node<K,V>[] initTable() {
         Node<K,V>[] tab; int sc;
+        // 第一次检查table是否初始化完成
         while ((tab = table) == null || tab.length == 0) {
+            // sc小于0，说明其它线程（假设线程A）通过CAS操作把sizeCtl设置为了-1
+            // 当前线程(假设线程B)临时让出CPU，相当于自旋，得到CPU后，进入while循环的下一次迭代，如果sc仍然小于0，继续自旋
+            // 直至线程A把table初始化完成，sizeCtl被设置为一个有效的值（实际上是下一次要扩容的阈值）
             if ((sc = sizeCtl) < 0)
                 Thread.yield(); // lost initialization race; just spin
             else if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
                 try {
+                    // 第二次检查table是否初始化完成
+                    // 因为可能有多个线程同时进入到while循环，线程A竞争成功走到这里，另外的线程，例如线程B竞争失败在做自旋操作，
+                    // 线程A初始化table完成之后，把sizeCtl设置为有效的值，然后退出while循环；然后线程B在下一次迭代中就可以CAS操作成功，走到这里，所以需要做第二次检查，避免多次初始化
                     if ((tab = table) == null || tab.length == 0) {
                         int n = (sc > 0) ? sc : DEFAULT_CAPACITY;
                         @SuppressWarnings("unchecked")
@@ -2248,6 +2255,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         sc = n - (n >>> 2);
                     }
                 } finally {
+                    // 初始化成功后，把sizeCtl设置为有效的值，以让其它线程结束自旋操作
                     sizeCtl = sc;
                 }
                 break;

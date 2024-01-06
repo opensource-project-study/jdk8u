@@ -218,7 +218,7 @@ public class LinkedHashMap<K,V>
 
     // internal utilities
 
-    // link at the end of list
+    // link at the end of list 典型的尾插法
     private void linkNodeLast(LinkedHashMap.Entry<K,V> p) {
         LinkedHashMap.Entry<K,V> last = tail;
         tail = p;
@@ -255,6 +255,7 @@ public class LinkedHashMap<K,V>
     Node<K,V> newNode(int hash, K key, V value, Node<K,V> e) {
         LinkedHashMap.Entry<K,V> p =
             new LinkedHashMap.Entry<K,V>(hash, key, value, e);
+        // 每次插入一个节点时，使用doubly-linked list记录节点的插入顺序
         linkNodeLast(p);
         return p;
     }
@@ -280,6 +281,7 @@ public class LinkedHashMap<K,V>
         return t;
     }
 
+    // 从hash表删除节点后，将其从doubly-linked list中移除
     void afterNodeRemoval(Node<K,V> e) { // unlink
         LinkedHashMap.Entry<K,V> p =
             (LinkedHashMap.Entry<K,V>)e, b = p.before, a = p.after;
@@ -307,6 +309,7 @@ public class LinkedHashMap<K,V>
         if (accessOrder && (last = tail) != e) {
             LinkedHashMap.Entry<K,V> p =
                 (LinkedHashMap.Entry<K,V>)e, b = p.before, a = p.after;
+            // 把p从doubly-linked list中移除
             p.after = null;
             if (b == null)
                 head = a;
@@ -316,6 +319,7 @@ public class LinkedHashMap<K,V>
                 a.before = b;
             else
                 last = b;
+            // 使用尾插法把p插入到doubly-linked list的尾部
             if (last == null)
                 head = p;
             else {
