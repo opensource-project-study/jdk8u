@@ -108,7 +108,9 @@ public abstract class AbstractExecutorService implements ExecutorService {
      */
     public Future<?> submit(Runnable task) {
         if (task == null) throw new NullPointerException();
-        // 创建一个FutureTask对象
+        // task转换为Callable实例，然后创建一个FutureTask对象，把FutureTask对象提交到线程池中
+        // FutureTask#run方法对Callable#call进行了try...catch，因此当task的执行发生异常时，即使线程池中的工作线程设置了UncaughtExceptionHandler（一般在java.util.concurrent.ThreadFactory.newThread方法中设置）
+        // 也不会感知到这个异常的，只有用Future.get()等方法获取结果时才能感知到这个异常。这一点和CompletableFuture相似，参考java.util.concurrent.CompletableFuture.reportGet方法上的注释
         RunnableFuture<Void> ftask = newTaskFor(task, null);
         execute(ftask);
         return ftask;
