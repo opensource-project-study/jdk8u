@@ -340,6 +340,10 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
 
     /**
      * Reports result using Future.get conventions.
+     *
+     * <p>如果r是AltResult类型的实例，并且r.ex不为null，说明调用{@link CompletableFuture#supplyAsync(java.util.function.Supplier, java.util.concurrent.Executor)}方法的Supplier在执行时发生了异常，
+     * 把异常封装为{@link AltResult}实例，写到了{@link CompletableFuture#result}中，在调用{@link CompletableFuture#get()}或{@link CompletableFuture#get(long, TimeUnit)}或者{@link CompletableFuture#join()}等方法时，会抛出result中记录的异常
+     * 换句话说，在调用get等方法之前，如果Supplier执行时发生了异常，用户是无法感知到异常的，因为{@link AsyncSupply#run()}、{@link AsyncRun#run()}等对Supplier进行了try...catch...；只有对CompletableFuture进行get时才能感知到异常。
      */
     private static <T> T reportGet(Object r)
         throws InterruptedException, ExecutionException {
@@ -1872,6 +1876,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         volatile Thread thread;
 
         Signaller(boolean interruptible, long nanos, long deadline) {
+            // 记录当前线程
             this.thread = Thread.currentThread();
             this.interruptControl = interruptible ? 1 : 0;
             this.nanos = nanos;
@@ -1890,6 +1895,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
                 return true;
             if (Thread.interrupted()) {
                 int i = interruptControl;
+                // 如果当前线程被中断，记录中断状态，以便上层调用方根据interruptControl这个属性做决策
                 interruptControl = -1;
                 if (i > 0)
                     return true;
@@ -1973,7 +1979,7 @@ public class CompletableFuture<T> implements Future<T>, CompletionStage<T> {
         if (nanos <= 0L)
             throw new TimeoutException();
         long d = System.nanoTime() + nanos;
-        // 因为d==0表示在Signaller中表示不检查超时时间，所以d==0即溢出时，将其置为1再传给Signaller
+        // 因为d==0在Signaller中表示不检查超时时间，所以d==0即溢出时，将其置为1再传给Signaller
         Signaller q = new Signaller(true, nanos, d == 0L ? 1L : d); // avoid 0
         boolean queued = false;
         Object r;
