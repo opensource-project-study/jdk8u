@@ -970,6 +970,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     // 中断并跳出标签（这里的标签是retry）所指的循环，这里指外层的for循环
                     break retry;
                 c = ctl.get();  // Re-read ctl
+                // 如果线程池状态发生了改变，需要跳转到retry处执行，重新检查线程池的状态
                 if (runStateOf(c) != rs)
                     // 到达标签（这里的标签是retry）的位置，并重新进入紧接在那个标签后面的循环，这里指外层的for循环
                     continue retry;
