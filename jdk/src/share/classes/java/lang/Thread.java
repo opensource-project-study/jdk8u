@@ -1234,6 +1234,12 @@ class Thread implements Runnable {
      * {@code this.notifyAll} method is invoked. It is recommended that
      * applications not use {@code wait}, {@code notify}, or
      * {@code notifyAll} on {@code Thread} instances.
+     * <p>当一个线程terminate时，该线程的notifyAll方法即{@code this.notifyAll}会被调用。以唤醒由于调用{@code this.wait}方法而阻塞的线程。
+     *
+     * <p>注意，因为{@code join}方法是通过{@code wait}来实现的，所以在应用中不要在该线程实例上使用{@code wait}, {@code notify}, or
+     * {@code notifyAll}等方法。
+     *
+     * <p>注意，这个方法加了synchronized关键字，也就是说只有获取了该线程实例（this）的monitor lock之后，才会走方法中的逻辑，调用{@code this.wait}方法对当前线程进行阻塞（这里说的当前线程不是指this，指的是调用this.join方法的线程）
      *
      * @param  millis
      *         the time to wait in milliseconds
