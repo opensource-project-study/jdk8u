@@ -65,6 +65,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
         } catch (Exception ex) { throw new Error(ex); }
     }
 
+    /** 注意：这里加了volatile关键字，因为{@link Unsafe#getIntVolatile(Object, long)}等很多方法需要用到volatile特性 */
     private volatile int value;
 
     /**
@@ -152,7 +153,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
     /**
      * Atomically increments by one the current value.
      *
-     * @return the previous value
+     * @return the previous value 返回旧值的副本
      */
     public final int getAndIncrement() {
         return unsafe.getAndAddInt(this, valueOffset, 1);
@@ -161,7 +162,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
     /**
      * Atomically decrements by one the current value.
      *
-     * @return the previous value
+     * @return the previous value 返回旧值的副本
      */
     public final int getAndDecrement() {
         return unsafe.getAndAddInt(this, valueOffset, -1);
@@ -171,7 +172,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
      * Atomically adds the given value to the current value.
      *
      * @param delta the value to add
-     * @return the previous value
+     * @return the previous value 返回旧值的副本
      */
     public final int getAndAdd(int delta) {
         return unsafe.getAndAddInt(this, valueOffset, delta);
@@ -180,7 +181,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
     /**
      * Atomically increments by one the current value.
      *
-     * @return the updated value
+     * @return the updated value 返回新值的副本
      */
     public final int incrementAndGet() {
         return unsafe.getAndAddInt(this, valueOffset, 1) + 1;
@@ -189,7 +190,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
     /**
      * Atomically decrements by one the current value.
      *
-     * @return the updated value
+     * @return the updated value 返回新值的副本
      */
     public final int decrementAndGet() {
         return unsafe.getAndAddInt(this, valueOffset, -1) - 1;
@@ -199,7 +200,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
      * Atomically adds the given value to the current value.
      *
      * @param delta the value to add
-     * @return the updated value
+     * @return the updated value 返回新值的副本
      */
     public final int addAndGet(int delta) {
         return unsafe.getAndAddInt(this, valueOffset, delta) + delta;

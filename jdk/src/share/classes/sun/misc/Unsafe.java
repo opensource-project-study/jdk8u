@@ -51,6 +51,9 @@ public final class Unsafe {
 
     private Unsafe() {}
 
+    /**
+     * 使用饿汉式单例模式设计
+     */
     private static final Unsafe theUnsafe = new Unsafe();
 
     /**
@@ -78,6 +81,8 @@ public final class Unsafe {
      *
      * (It may assist compilers to make the local variable be
      * <code>final</code>.)
+     *
+     * <p>只有被bootstrap class loader加载的类才能直接调用该方法来获取Unsafe的实例
      *
      * @exception  SecurityException  if a security manager exists and its
      *             <code>checkPropertiesAccess</code> method doesn't allow
@@ -871,6 +876,8 @@ public final class Unsafe {
     /**
      * Atomically update Java variable to <tt>x</tt> if it is currently
      * holding <tt>expected</tt>.
+     *
+     * <p>o和offset指定了一个主内存地址，若这块内存存储的值与expected相等，则将其更新为x；这个过程是原子的，不能被阻塞和中断。
      * @return <tt>true</tt> if successful
      */
     public final native boolean compareAndSwapObject(Object o, long offset,
@@ -981,7 +988,7 @@ public final class Unsafe {
      * so when calling from native code.
      *
      * <p>对使用park操作阻塞的线程，对其解除阻塞。
-     * <p>如果先调用了unpark(thread)，接着在thread线程进行park，此时park操作不会阻塞该thread，这一次之后的park操作就正常了
+     * <p>如果thread没有被阻塞，但是调用了unpark(thread)，如果接着对thread线程进行park，此时park操作不会阻塞该thread，这一次之后的park操作就正常了
      *
      * <p>具体的逻辑可以查看：
      * <p>jdk8u/hotspot/src/share/vm/prims/unsafe.cpp中的UNSAFE_ENTRY(void, Unsafe_Unpark(JNIEnv *env, jobject unsafe, jobject jthread))
@@ -1046,7 +1053,7 @@ public final class Unsafe {
      * @param o object/array to update the field/element in
      * @param offset field/element offset
      * @param delta the value to add
-     * @return the previous value
+     * @return the previous value 返回旧值的副本
      * @since 1.8
      */
     public final int getAndAddInt(Object o, long offset, int delta) {

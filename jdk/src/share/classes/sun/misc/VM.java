@@ -237,6 +237,9 @@ public class VM {
     /**
      * Returns true if the given class loader is in the system domain
      * in which all permissions are granted.
+     *
+     * <p>loader为null表示的是启动类加载器 bootstrap class loader
+     * @see Class#getClassLoader()
      */
     public static boolean isSystemDomainLoader(ClassLoader loader) {
         return loader == null;

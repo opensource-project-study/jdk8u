@@ -127,7 +127,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * {@link InterruptedException} if they too were interrupted at about
  * the same time).
  *
- * <p>其实CyclicBarrier代码设计的一个关键点是{@link Condition#await()}等方法会阻塞调用该方法的线程并释放该Condition关联的锁，
+ * <p>其实CyclicBarrier代码设计的一个关键点是{@link Condition#await()}等方法会释放该Condition关联的锁并阻塞调用该方法的线程，
  * 这样，其它线程在执行{@link #await()}方法里的逻辑时才会拿到锁并去递减{@link #count}，直到最后一个线程将count减至0，然后执行{@link #barrierCommand}。
  * 换句话说，就是借用{@link AbstractQueuedSynchronizer.ConditionObject#await()}等方法实现的能力来设计CyclicBarrier这个类的。
  *
