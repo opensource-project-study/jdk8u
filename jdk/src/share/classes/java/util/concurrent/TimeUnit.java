@@ -175,13 +175,13 @@ public enum TimeUnit {
     };
 
     // Handy constants for conversion methods
-    static final long C0 = 1L;
-    static final long C1 = C0 * 1000L;
-    static final long C2 = C1 * 1000L;
-    static final long C3 = C2 * 1000L;
-    static final long C4 = C3 * 60L;
-    static final long C5 = C4 * 60L;
-    static final long C6 = C5 * 24L;
+    static final long C0 = 1L;              // 1 second = C0 second
+    static final long C1 = C0 * 1000L;      // 1 second = C1 milliseconds
+    static final long C2 = C1 * 1000L;      // 1 second = C2 microseconds
+    static final long C3 = C2 * 1000L;      // 1 second = C3 nanoseconds
+    static final long C4 = C3 * 60L;        // 1 minute = C4 nanoseconds
+    static final long C5 = C4 * 60L;        // 1 hour   = C5 nanoseconds
+    static final long C6 = C5 * 24L;        // 1 day    = C6 nanoseconds
 
     static final long MAX = Long.MAX_VALUE;
 

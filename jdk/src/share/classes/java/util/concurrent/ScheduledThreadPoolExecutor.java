@@ -177,13 +177,18 @@ public class ScheduledThreadPoolExecutor
         return System.nanoTime();
     }
 
+    /**
+     * ScheduledFutureTask是一个普通的内部类
+     *
+     * @param <V>
+     */
     private class ScheduledFutureTask<V>
             extends FutureTask<V> implements RunnableScheduledFuture<V> {
 
         /** Sequence number to break ties FIFO */
         private final long sequenceNumber;
 
-        /** The time the task is enabled to execute in nanoTime units */
+        /** The time the task is enabled to execute in nanoTime units，以纳秒为单位 */
         private long time;
 
         /**
@@ -191,6 +196,8 @@ public class ScheduledThreadPoolExecutor
          * value indicates fixed-rate execution.  A negative value
          * indicates fixed-delay execution.  A value of 0 indicates a
          * non-repeating task.
+         *
+         * <p>以纳秒为单位
          */
         private final long period;
 
@@ -232,6 +239,11 @@ public class ScheduledThreadPoolExecutor
             this.sequenceNumber = sequencer.getAndIncrement();
         }
 
+        /**
+         * {@inheritDoc}
+         *
+         * <p>返回剩余的延迟时间，即距离task执行时间还剩余多少时间，单位：纳秒
+         */
         public long getDelay(TimeUnit unit) {
             return unit.convert(time - now(), NANOSECONDS);
         }
@@ -290,9 +302,12 @@ public class ScheduledThreadPoolExecutor
             if (!canRunInCurrentRunState(periodic))
                 cancel(false);
             else if (!periodic)
+                // 如果不是周期任务，直接执行一次即可
                 ScheduledFutureTask.super.run();
             else if (ScheduledFutureTask.super.runAndReset()) {
+                // runAndReset方法执行成功之后，设置task下一次的执行时间
                 setNextRunTime();
+                // task重新入队
                 reExecutePeriodic(outerTask);
             }
         }
@@ -322,15 +337,19 @@ public class ScheduledThreadPoolExecutor
      * @param task the task
      */
     private void delayedExecute(RunnableScheduledFuture<?> task) {
+        // 如果线程池不处于RUNNING状态，直接拒绝该task
         if (isShutdown())
             reject(task);
         else {
+            // task入队workQueue
             super.getQueue().add(task);
+            // 再次检查线程池的状态，如果不处于RUNNING状态，从阻塞队列中移除task，移除成功后，将task取消掉
             if (isShutdown() &&
                 !canRunInCurrentRunState(task.isPeriodic()) &&
                 remove(task))
                 task.cancel(false);
             else
+                // 添加并启动工作线程
                 ensurePrestart();
         }
     }
@@ -563,13 +582,16 @@ public class ScheduledThreadPoolExecutor
             throw new NullPointerException();
         if (period <= 0)
             throw new IllegalArgumentException();
+        // 将command封装为一个ScheduledFutureTask对象
         ScheduledFutureTask<Void> sft =
             new ScheduledFutureTask<Void>(command,
                                           null,
                                           triggerTime(initialDelay, unit),
                                           unit.toNanos(period));
+        // 对sft装饰，默认不进行装饰，直接返回sft
         RunnableScheduledFuture<Void> t = decorateTask(command, sft);
         sft.outerTask = t;
+        // 默认t == sft，将t添加到阻塞队列中
         delayedExecute(t);
         return t;
     }
@@ -912,6 +934,7 @@ public class ScheduledThreadPoolExecutor
 
         /**
          * Resizes the heap array.  Call only when holding lock.
+         * <p>1.5倍扩容
          */
         private void grow() {
             int oldCapacity = queue.length;
@@ -1021,6 +1044,7 @@ public class ScheduledThreadPoolExecutor
                 }
                 if (queue[0] == e) {
                     leader = null;
+                    // 唤醒阻塞的工作线程
                     available.signal();
                 }
             } finally {
@@ -1048,12 +1072,15 @@ public class ScheduledThreadPoolExecutor
          * @param f the task to remove and return
          */
         private RunnableScheduledFuture<?> finishPoll(RunnableScheduledFuture<?> f) {
+            // 递减size
             int s = --size;
+            // 把第一个元素替换为最后一个
             RunnableScheduledFuture<?> x = queue[s];
             queue[s] = null;
             if (s != 0)
                 siftDown(0, x);
             setIndex(f, -1);
+            // 将f返回
             return f;
         }
 
@@ -1077,10 +1104,12 @@ public class ScheduledThreadPoolExecutor
             try {
                 for (;;) {
                     RunnableScheduledFuture<?> first = queue[0];
+                    // first为null，表示阻塞队列为空，阻塞当前线程
                     if (first == null)
                         available.await();
                     else {
                         long delay = first.getDelay(NANOSECONDS);
+                        // 如果距离task执行时间的剩余时间<=0，说明可以执行此task，把first返回，让工作线程执行此task
                         if (delay <= 0)
                             return finishPoll(first);
                         first = null; // don't retain ref while waiting
@@ -1090,8 +1119,10 @@ public class ScheduledThreadPoolExecutor
                             Thread thisThread = Thread.currentThread();
                             leader = thisThread;
                             try {
+                                // 先获取leader，然后阻塞当前线程delay这么久的时间，换言之，是通过Condition.awaitNanos方法进行的delay操作
                                 available.awaitNanos(delay);
                             } finally {
+                                // delay之后，将leader置为null，以让其它的工作线程可以delay
                                 if (leader == thisThread)
                                     leader = null;
                             }
@@ -1099,6 +1130,7 @@ public class ScheduledThreadPoolExecutor
                     }
                 }
             } finally {
+                // 唤醒阻塞的工作线程
                 if (leader == null && queue[0] != null)
                     available.signal();
                 lock.unlock();
@@ -1114,6 +1146,7 @@ public class ScheduledThreadPoolExecutor
                 for (;;) {
                     RunnableScheduledFuture<?> first = queue[0];
                     if (first == null) {
+                        // 如果超时，直接返回null，否则，阻塞当前线程，直到其它工作线程向阻塞队列中添加了一个task 或者 等待nanos后超时
                         if (nanos <= 0)
                             return null;
                         else
@@ -1122,6 +1155,7 @@ public class ScheduledThreadPoolExecutor
                         long delay = first.getDelay(NANOSECONDS);
                         if (delay <= 0)
                             return finishPoll(first);
+                        // 如果超时，直接返回null
                         if (nanos <= 0)
                             return null;
                         first = null; // don't retain ref while waiting

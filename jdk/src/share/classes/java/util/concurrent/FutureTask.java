@@ -303,6 +303,7 @@ public class FutureTask<V> implements RunnableFuture<V> {
      * computation encounters an exception or is cancelled.  This is
      * designed for use with tasks that intrinsically execute more
      * than once.
+     * <p>这个方法的调用方主要是{@link ScheduledThreadPoolExecutor.ScheduledFutureTask#run()}
      *
      * @return {@code true} if successfully run and reset
      */
@@ -311,12 +312,14 @@ public class FutureTask<V> implements RunnableFuture<V> {
             !UNSAFE.compareAndSwapObject(this, runnerOffset,
                                          null, Thread.currentThread()))
             return false;
+        // state为NEW，并且通过CAS操作将runner从null置为当前线程成功之后，才允许执行以下逻辑
         boolean ran = false;
         int s = state;
         try {
             Callable<V> c = callable;
             if (c != null && s == NEW) {
                 try {
+                    // 注意，这里只是执行了callable，并没有设置结果
                     c.call(); // don't set result
                     ran = true;
                 } catch (Throwable ex) {
@@ -329,6 +332,8 @@ public class FutureTask<V> implements RunnableFuture<V> {
             runner = null;
             // state must be re-read after nulling runner to prevent
             // leaked interrupts
+            // 如果callable正常执行完成，state应该还是NEW
+            // 如果callable执行时发生异常，state最终变为EXCEPTIONAL
             s = state;
             if (s >= INTERRUPTING)
                 handlePossibleCancellationInterrupt(s);
@@ -375,9 +380,12 @@ public class FutureTask<V> implements RunnableFuture<V> {
      */
     private void finishCompletion() {
         // assert state > COMPLETING;
+        // 这里用了一个循环，主要考虑的是在用CAS操作将waiters置为null之后，如果state还没有被置为NORMAL或者EXCEPTIONAL或者INTERRUPTED(因为使用的是UNSAFE.putOrderedInt方法)，如果此时还有其它线程进行get()操作
+        // 那么在get()方法中会对这些线程进行阻塞。因为此时运算已经结束，所以也需要对这些线程解除阻塞
         for (WaitNode q; (q = waiters) != null;) {
             // 首先，使用CAS操作将waiters置为null
             if (UNSAFE.compareAndSwapObject(this, waitersOffset, q, null)) {
+                // 唤醒每一个WaitNode
                 for (;;) {
                     Thread t = q.thread;
                     if (t != null) {

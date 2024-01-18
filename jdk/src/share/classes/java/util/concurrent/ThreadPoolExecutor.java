@@ -834,7 +834,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         try {
             for (Worker w : workers) {
                 Thread t = w.thread;
-                // 如果Worker.tryLock加锁成功，就认为该工作线程空闲。因为工作线程在执行task之前会先调用Worker.lock方法加锁。换句话说，如果该Worker对象还没有加锁，说明该工作线程当前并没有task在执行，所以认为是空闲的。参考：runWorker(Worker w)方法
+                // 如果这里Worker.tryLock能够加锁成功，就认为该工作线程空闲。因为工作线程在执行task之前会先调用Worker.lock方法加锁。换句话说，如果该Worker对象还没有加锁，说明该工作线程当前并没有task在执行，所以认为是空闲的，而此时尝试加锁会加锁成功。参考：runWorker(Worker w)方法
                 if (!t.isInterrupted() && w.tryLock()) {
                     try {
                         t.interrupt();
@@ -1695,6 +1695,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         if (wc < corePoolSize)
             addWorker(null, true);
         else if (wc == 0)
+            // 只有corePoolSize==0才可能走到这里，这种情况下，在addWorker的逻辑中和corePoolSize比较总会不通过，所以需要把core设置false，以和maximumPoolSize进行比较，然后才有可能添加一个工作线程
             addWorker(null, false);
     }
 
