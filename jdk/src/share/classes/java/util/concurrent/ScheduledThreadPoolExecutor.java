@@ -280,6 +280,7 @@ public class ScheduledThreadPoolExecutor
          * Sets the next time to run for a periodic task.
          */
         private void setNextRunTime() {
+            // period>0 表示fixed-rate execution，period<0表示fixed-delay execution，period==0表示non-repeating task
             long p = period;
             if (p > 0)
                 time += p;

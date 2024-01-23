@@ -1074,6 +1074,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         int c = ctl.get();
         if (runStateLessThan(c, STOP)) {
             // 当工作线程正常结束时，只有当工作线程数<min（线程池中不允许time out的工作线程数）时，才用一个新的工作线程来对其进行替换
+            // 当工作线程异常结束时，总是用一个新的工作线程来对其进行替换
             if (!completedAbruptly) {
                 int min = allowCoreThreadTimeOut ? 0 : corePoolSize;
                 // workQueue非空时，至少需要一个工作线程，以执行workQueue中的task
@@ -1131,7 +1132,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             // 当然，上述两种情况，都需要确保当前工作线程不是线程池中最后一个工作线程，如果确实是最后一个，需要workQueue为空才能终止当前工作线程，以确保workQueue中的task能够有机会得到执行。
             if ((wc > maximumPoolSize || (timed && timedOut))
                 && (wc > 1 || workQueue.isEmpty())) {
-                // 递减workerCount
+                // 递减workerCount，如果CAS操作失败，说明存在并发情况，重试即可
                 if (compareAndDecrementWorkerCount(c))
                     return null;
                 continue;
