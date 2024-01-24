@@ -2136,6 +2136,8 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
          * Executes task r in the caller's thread, unless the executor
          * has been shut down, in which case the task is discarded.
          *
+         * <p>调用{@link #execute(Runnable)}方法的线程执行task r
+         *
          * @param r the runnable task requested to be executed
          * @param e the executor attempting to execute this task
          */
@@ -2214,7 +2216,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             if (!e.isShutdown()) {
                 // 从workQueue中弹出下一个要执行的task并丢弃掉
                 e.getQueue().poll();
-                // 执行r
+                // 调用execute方法 执行r
                 e.execute(r);
             }
         }
