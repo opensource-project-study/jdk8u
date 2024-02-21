@@ -2002,7 +2002,7 @@ public abstract class AbstractQueuedSynchronizer
          */
         private void unlinkCancelledWaiters() {
             Node t = firstWaiter;
-            // trail保存第一个没有被cancel的节点
+            // 在遍历过程中，trail始终指向最后一个没有被cancel的节点
             Node trail = null;
             while (t != null) {
                 Node next = t.nextWaiter;
