@@ -108,21 +108,25 @@ public class Object {
      * <li>It is <i>reflexive</i>: for any non-null reference value
      *     {@code x}, {@code x.equals(x)} should return
      *     {@code true}.
+     *     自反性
      * <li>It is <i>symmetric</i>: for any non-null reference values
      *     {@code x} and {@code y}, {@code x.equals(y)}
      *     should return {@code true} if and only if
      *     {@code y.equals(x)} returns {@code true}.
+     *     对称性
      * <li>It is <i>transitive</i>: for any non-null reference values
      *     {@code x}, {@code y}, and {@code z}, if
      *     {@code x.equals(y)} returns {@code true} and
      *     {@code y.equals(z)} returns {@code true}, then
      *     {@code x.equals(z)} should return {@code true}.
+     *     传递性
      * <li>It is <i>consistent</i>: for any non-null reference values
      *     {@code x} and {@code y}, multiple invocations of
      *     {@code x.equals(y)} consistently return {@code true}
      *     or consistently return {@code false}, provided no
      *     information used in {@code equals} comparisons on the
      *     objects is modified.
+     *     一致性
      * <li>For any non-null reference value {@code x},
      *     {@code x.equals(null)} should return {@code false}.
      * </ul>
@@ -138,6 +142,9 @@ public class Object {
      * method whenever this method is overridden, so as to maintain the
      * general contract for the {@code hashCode} method, which states
      * that equal objects must have equal hash codes.
+     * <p>每当equals方法被重写时，通常需要重写hashcode方法，以便维护hashcode方法的通用约定，即相等的对象总是有相等的hash值。
+     * 比如，{@link java.util.HashMap#put(Object key, Object value)}在解决散列冲突前，总是先比较{@link java.util.HashMap#hash(Object)}，
+     * 然后比较equals方法，都相等时才判定为相等。
      *
      * @param   obj   the reference object with which to compare.
      * @return  {@code true} if this object is the same as the obj
