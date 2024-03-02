@@ -44,6 +44,7 @@ import sun.misc.SharedSecrets;
  * broken arbitrarily.  The queue retrieval operations {@code poll},
  * {@code remove}, {@code peek}, and {@code element} access the
  * element at the head of the queue.
+ * <p>队首元素是对应指定排序的最小元素，即排在第一个的元素。具体的，升序 队首元素就是最小元素；降序 队首元素就是最大元素。
  *
  * <p>A priority queue is unbounded, but has an internal
  * <i>capacity</i> governing the size of an array used to store the
@@ -323,6 +324,7 @@ public class PriorityQueue<E> extends AbstractQueue<E>
 
     /**
      * Inserts the specified element into this priority queue.
+     * <p>时间复杂度O(logn)
      *
      * @return {@code true} (as specified by {@link Queue#offer})
      * @throws ClassCastException if the specified element cannot be
@@ -582,6 +584,11 @@ public class PriorityQueue<E> extends AbstractQueue<E>
         size = 0;
     }
 
+    /**
+     * 时间复杂度O(logn)
+     *
+     * {@inheritDoc}
+     */
     @SuppressWarnings("unchecked")
     public E poll() {
         if (size == 0)
