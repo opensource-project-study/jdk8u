@@ -734,6 +734,13 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
 
             // 当线程池处于STOP状态 或者 （SHUTDOWN状态 && workQueue为空）才会走下面的逻辑
 
+            // 这一步调用非常关键，是调用shutdown()时，使不处于空闲即正在执行task的工作线程最终正常结束的关键步骤
+            // 因为调用shutdown()时，只对空闲的工作线程进行中断。
+            // 举一个具体的场景，假设线程池的corePoolSize和maximumPoolSize都是2，workQueue的容量为100，先调用3次execute()方法提交3个task，然后调用shutdown()方法关闭线程池
+            // 假设提交的task需要很长的执行时间，即调用shutdown()时，两个工作线程都没有执行完task，即都不属于空闲的工作线程，那么这两个工作线程都没有被中断，假设两个工作线程同时执行完了task，就会调用getTask()方法
+            // 从workQueue中取task，由于workQueue中只有一个task，所以只有一个工作线程A可以取成功，另一个工作线程B被阻塞；
+            // A执行task完成之后，调用getTask()取下一个task，先检查线程池状态，发现SHUTDOWN && workQueue为空，于是返回null，A正常结束，调用processWorkerExit方法，进而调用到该tryTerminate方法
+            // 然后对一个空闲的工作线程进行中断，这个例子中就是对B进行中断，然后B在调用getTask()方法时getTask()最终返回null，B正常结束，至此，所有的工作线程都结束了，从而线程池也完全终止了。
             if (workerCountOf(c) != 0) { // Eligible to terminate
                 interruptIdleWorkers(ONLY_ONE);
                 return;
@@ -835,8 +842,17 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             for (Worker w : workers) {
                 Thread t = w.thread;
                 // 如果这里Worker.tryLock能够加锁成功，就认为该工作线程空闲。因为工作线程在执行task之前会先调用Worker.lock方法加锁。换句话说，如果该Worker对象还没有加锁，说明该工作线程当前并没有task在执行，所以认为是空闲的，而此时尝试加锁会加锁成功。参考：runWorker(Worker w)方法
+                // 工作线程t处于空闲有两种原因：
+                // 1. 当前线程和工作线程t竞争加锁，t竞争失败进入acquireQueued方法重试，直到当前线程释放锁之后，t才能成功加锁，从而在runWorker方法中继续执行task
+                // 2. 在getTask()方法中，在调用workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS)或workQueue.take()取task时，由于workQueue为空，会进行条件等待，导致t被阻塞
                 if (!t.isInterrupted() && w.tryLock()) {
                     try {
+                        // 中断空闲线程t
+                        // 假设t是由于上述的原因2而处于空闲，workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS)和workQueue.take()里调用的takeLock.lockInterruptibly()和await方法都可以检测到中断并抛出中断异常，
+                        // 从而workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS)和workQueue.take()抛出中断异常，在getTask()方法中就会捕获这个中断异常然后进入for(;;)的下一次迭代，在迭代开始处会检查线程池的状态，如果(线程池状态>=SHUTDOWN && workQueue为空)或者(线程池状态>=STOP)，getTask()方法返回null，从而t正常结束
+                        //
+                        // 假设t是由于上述的原因1而处于空闲，执行task完成之后，会调用getTask()方法获取下一个task，由于getTask()会先检查线程池的状态，如果(线程池状态>=SHUTDOWN && workQueue为空)或者(线程池状态>=STOP)，getTask()会返回null，然后t正常结束；
+                        // 否则，继续从workQueue里取出task执行，最终会回到上述原因2所处的情形。
                         t.interrupt();
                     } catch (SecurityException ignore) {
                     } finally {
@@ -1069,6 +1085,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             mainLock.unlock();
         }
 
+        // 当一个工作线程结束后，总是尝试终止线程池
         tryTerminate();
 
         int c = ctl.get();
@@ -1468,6 +1485,10 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * complete execution.  Use {@link #awaitTermination awaitTermination}
      * to do that.
      *
+     * <p>中断的意义：
+     * <p>对于空闲的工作线程来说，查看{@link #interruptIdleWorkers(boolean)}方法上的注释
+     * <p>对于不处于空闲的工作线程来说，查看{@link #tryTerminate()}方法上的注释
+     *
      * @throws SecurityException {@inheritDoc}
      */
     public void shutdown() {
@@ -1478,7 +1499,6 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             // 将线程池状态置为SHUTDOWN
             advanceRunState(SHUTDOWN);
             // 中断所有空闲的工作线程
-            // 这里中断的意义是，如果将来某一时刻空闲线程从workQueue中获取了一个task执行，task本身（即业务代码）就可以根据线程的中断状态来做一些逻辑处理。
             interruptIdleWorkers();
             onShutdown(); // hook for ScheduledThreadPoolExecutor
         } finally {
@@ -1513,9 +1533,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             // 将线程池状态置为STOP
             advanceRunState(STOP);
             // 中断所有工作线程
-            // 这里中断的意义是，如果工作线程正在执行一个task，task本身（即业务代码）就可以根据线程的中断状态来做一些逻辑处理。
             interruptWorkers();
             // 将workQueue中的所有元素移除，所以执行该方法之后，workQueue就是一个空队列了，各个工作线程把正在执行的task执行完成之后，就拿不到task了，然后正常结束
+            // 更具体的讲，
+            // 当一个工作线程不处于空闲，即正在执行一个task，当该task执行完成之后，会调用getTask()方法获取下一个task，由于getTask()会先检查线程池的状态，如果(线程池状态>=SHUTDOWN && workQueue为空)或者(线程池状态>=STOP)，getTask()会返回null，然后t正常结束；
+            // 当一个工作线程处于空闲时，查看interruptIdleWorkers(boolean)方法上的注释
             tasks = drainQueue();
         } finally {
             mainLock.unlock();
