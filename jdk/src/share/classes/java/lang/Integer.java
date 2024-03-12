@@ -834,6 +834,7 @@ public final class Integer extends Number implements Comparable<Integer> {
 
     /**
      * The value of the {@code Integer}.
+     * <p>注意，value加了final关键字，即一旦Integer对象创建成功，其中的值就不可变
      *
      * @serial
      */
