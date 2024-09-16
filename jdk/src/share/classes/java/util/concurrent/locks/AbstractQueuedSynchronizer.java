@@ -582,6 +582,8 @@ public abstract class AbstractQueuedSynchronizer
      * <p>在一个无限for循环中进行CAS操作是处理并发场景的典型方案。当有多个线程同时进行CAS操作时，
      * <p>只有一个线程可以成功，失败的其它线程则进入循环中的下次迭代进行重试，直到所有线程都处理完成。
      *
+     * <p>这个方法是多线程环境下使用CAS操作在一个链表尾部插入一个节点即尾插法的典型实现。
+     *
      * @param node the node to insert
      * @return node's predecessor
      */
@@ -888,6 +890,7 @@ public abstract class AbstractQueuedSynchronizer
     /**
      * Acquires in exclusive uninterruptible mode for thread already in
      * queue. Used by condition wait methods as well as acquire.
+     * <p>为已经在CLH队列中的线程以互斥不可中断的模式获取锁。
      *
      * @param node the node
      * @param arg the acquire argument
@@ -899,7 +902,7 @@ public abstract class AbstractQueuedSynchronizer
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
-                // 如果node是head后的第一个节点，则调用tryAcquire尝试为当前线程重新获取锁
+                // 如果node是head后的第一个节点，则调用tryAcquire方法尝试为node中的线程获取锁
                 // 如果获取锁成功，将node置为头结点，相当于将node从等待队列中移除
                 if (p == head && tryAcquire(arg)) {
                     setHead(node);
@@ -1583,8 +1586,11 @@ public abstract class AbstractQueuedSynchronizer
         // before tail and on head.next being accurate if the current
         // thread is first in queue.
         /**
-         * 假设线程1调用{@link ReentrantLock.FairSync#lock()}，在调用{@link ReentrantLock.FairSync#tryAcquire(int)}失败后会调用{@link #enq(Node)}方法使线程入队，在初始化{@link #head}和{@link #tail}这两个节点时，先初始化head，然后把head赋值给tail
-         * 如果在执行tail = head;这个操作之前，线程2进行{@link ReentrantLock.FairSync#lock()}就会调用到这里做检查，因为此时tail还是null，但是线程1很快入队成功，就会出现head.next == null这种场景，此时认为线程2前面是有线程在等待的。
+         * <p>h != t有两种情况：
+         * <p>第一种情况，假设线程A成功获取了锁；线程B调用{@link ReentrantLock#lock()} 加锁失败后加入到了CLH队列里面；
+         * 然后线程C调用{@link ReentrantLock.FairSync#lock()}加锁就会调用到这里做检查，此时就有h != t && s.thread != Thread.currentThread() 因为s.thread==线程B
+         * <p>第二种情况，假设线程A成功获取了锁；线程B调用{@link ReentrantLock#lock()} 加锁失败后准备加入到CLH队列的过程中，在调用{@link #enq(Node)}方法，初始化{@link #head}和{@link #tail}这两个节点时，先初始化head，然后把head赋值给tail，
+         * 如果在执行{@code tail = head;}这个操作之前，线程C调用{@link ReentrantLock.FairSync#lock()}加锁就会调用到这里做检查，并且此时h != t (因为此时tail还是null)，由于线程C所属的node还没有加入到CLH队列，则有head.next == null
          */
         Node t = tail; // Read fields in reverse initialization order
         Node h = head;

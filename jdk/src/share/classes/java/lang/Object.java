@@ -371,6 +371,7 @@ public class Object {
      * into the wait set for this object, unlocks only this object; any
      * other objects on which the current thread may be synchronized remain
      * locked while the thread waits.
+     * <p>调用object#wait方法，只解锁this object，当前线程同步的任何其它object，仍然保持锁定。
      * <p>
      * This method should only be called by a thread that is the owner
      * of this object's monitor. See the {@code notify} method for a
