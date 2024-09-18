@@ -445,7 +445,7 @@ public class LinkedBlockingQueue<E> extends AbstractQueue<E>
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lockInterruptibly();
         try {
-            // 必须在一个while循环中进行await，因为await前后 条件检查的值可能发生变化，所以await返回之后需要重新检查条件是否满足
+            // 必须在一个while循环中进行await，因为await方法退出后 仍然可能不满足条件，此时需要再次await，所以await返回之后需要重新检查条件是否满足，参考Object#wait()方法的注释
             while (count.get() == 0) {
                 notEmpty.await();
             }

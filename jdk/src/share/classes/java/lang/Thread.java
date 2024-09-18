@@ -695,6 +695,7 @@ class Thread implements Runnable {
      * It is never legal to start a thread more than once.
      * In particular, a thread may not be restarted once it has completed
      * execution.
+     * <p>多次启动同一个线程是非法的。
      *
      * @exception  IllegalThreadStateException  if the thread was already
      *               started.

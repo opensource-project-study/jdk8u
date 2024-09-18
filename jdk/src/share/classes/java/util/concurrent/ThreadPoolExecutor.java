@@ -613,7 +613,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * state to a negative value, and clear it upon start (in
      * runWorker).
      *
-     * <p>Worker是一个普通的内部类，可以访问外部类的成员，参考{@link java.util.concurrent.locks.AbstractQueuedSynchronizer.ConditionObject}
+     * <p>Worker是一个普通的内部类，可以访问外部类的成员
+     * @see java.util.concurrent.locks.AbstractQueuedSynchronizer.ConditionObject
+     *
      * <p>使用{@link AbstractQueuedSynchronizer#state}作为锁的状态。0 未锁定；1 锁定。
      */
     private final class Worker
@@ -641,7 +643,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             setState(-1); // inhibit interrupts until runWorker，runWorker会调用unlock()方法将state置为0
             this.firstTask = firstTask;
             // 把this作为参数传给newThread，即把当前的Worker对象作为thread的target属性
-            // thread启动时，会调用其target的run方法，这里就是该Worker对象的run方法
+            // thread启动时，JVM自动调用线程的run方法，如果线程的target不为null，会调用其target的run方法，这里就是该Worker对象的run方法
             this.thread = getThreadFactory().newThread(this);
         }
 
