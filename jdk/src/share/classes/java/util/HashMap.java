@@ -375,6 +375,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * Returns a power of two size for the given target capacity.
+     * <p>计算不小于cap的最小2的幂。最小为1 = 2 ^ 0，最大为MAXIMUM_CAPACITY = 1 << 30 = 2 ^ 30
      */
     static final int tableSizeFor(int cap) {
         int n = cap - 1;
@@ -569,12 +570,16 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
         if ((tab = table) != null && (n = tab.length) > 0 &&
             (first = tab[(n - 1) & hash]) != null) {
+            // 先检查bin内第一个节点
             if (first.hash == hash && // always check first node
                 ((k = first.key) == key || (key != null && key.equals(k))))
                 return first;
+            // 若不是bin内第一个节点，则在first的后续节点中继续查找
             if ((e = first.next) != null) {
+                // 在红黑树中查找
                 if (first instanceof TreeNode)
                     return ((TreeNode<K,V>)first).getTreeNode(hash, key);
+                // 在单向链表中查找，直接遍历链表进行查找，因为链表节点数目(除去头结点) <= TREEIFY_THRESHOLD，时间复杂度为O(TREEIFY_THRESHOLD) = O(1)，即常数时间
                 do {
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
@@ -626,22 +631,29 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
+        // 当第一次put时，进行扩容resize；此时相当于对table进行初始化Initialize
         if ((tab = table) == null || (n = tab.length) == 0)
             n = (tab = resize()).length;
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
         else {
             Node<K,V> e; K k;
+            // key的hashcode相等 && key相等，才认为key存在于table中
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 e = p;
             else if (p instanceof TreeNode)
+                // 使用红黑树解决散列冲突
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
             else {
+                // 使用单向链表处理散列冲突，遍历链表，直接加到链表的尾部
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        // 当走到这里时，binCount表示的是除去头结点和加入的新节点之外的bin内节点数量，所以，当binCount等于7时，bin内节点的数量为9，即当bin内所有节点数量达到9时，将链表转换为红黑树，以提高插入和查询的效率
+                        // 需要注意的是，bin内所有节点数量达到9的概率约为1 in ten million，是非常小的概率，即单向链表需要转换为红黑树的概率是非常低的。保证了写入和查询的效率几乎等于O(1)，即常数时间的复杂度。
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                            // 注意：在treeifyBin还有判断，如果table的长度小于64，直接扩容，而不是转为红黑树
                             treeifyBin(tab, hash);
                         break;
                     }
@@ -660,6 +672,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             }
         }
         ++modCount;
+        // 扩容判断
         if (++size > threshold)
             resize();
         afterNodeInsertion(evict);
@@ -765,6 +778,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     final void treeifyBin(Node<K,V>[] tab, int hash) {
         int n, index; Node<K,V> e;
+        // 如果table的长度小于64，直接扩容
         if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
             resize();
         else if ((e = tab[index = (n - 1) & hash]) != null) {
@@ -834,6 +848,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                 if (p instanceof TreeNode)
                     node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
                 else {
+                    // p始终是node的前驱，即p.next == node，记录p，以便把node从链表中移除
                     do {
                         if (e.hash == hash &&
                             ((k = e.key) == key ||
@@ -849,6 +864,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                                  (value != null && value.equals(v)))) {
                 if (node instanceof TreeNode)
                     ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+                // 如果node是链表的头结点，直接更新头结点为node.next，否则，直接去除node
                 else if (node == p)
                     tab[index] = node.next;
                 else
@@ -922,6 +938,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         return ks;
     }
 
+    /**
+     * 这是一个普通的内部类，拥有其外围类的所有成员的访问权。
+     * @see java.util.concurrent.locks.AbstractQueuedSynchronizer.ConditionObject
+     */
     final class KeySet extends AbstractSet<K> {
         public final int size()                 { return size; }
         public final void clear()               { HashMap.this.clear(); }

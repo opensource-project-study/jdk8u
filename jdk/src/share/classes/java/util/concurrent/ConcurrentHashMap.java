@@ -301,6 +301,8 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * CASes.  Because there is no other way to arrange this without
      * adding further indirections, we use intrinsics
      * (sun.misc.Unsafe) operations.
+     * 第一次插入时初始化Node数组table，Node数组中一个元素所在的位置称为一个bin(bucket 桶)，一个bin内通常包含一个单向链表，或者是一棵红黑树。
+     * 对table的访问使用sun.misc.Unsafe类提供的CAS操作。
      *
      * We use the top (sign) bit of Node hash fields for control
      * purposes -- it is available anyway because of addressing
@@ -316,6 +318,8 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * each bin, so instead use the first node of a bin list itself as
      * a lock. Locking support for these locks relies on builtin
      * "synchronized" monitors.
+     * 插入空桶的第一个节点使用CAS操作，后续的插入、删除和替换等操作需要一个锁lock。
+     * 为了节省锁需要使用的空间，使用每个桶的第一个节点作为锁(使用内置的synchronized关键字实现锁功能)
      *
      * Using the first node of a list as a lock does not by itself
      * suffice though: When a node is locked, any update must first
@@ -323,6 +327,8 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * retry if not. Because new nodes are always appended to lists,
      * once a node is first in a bin, it remains first until deleted
      * or the bin becomes invalidated (upon resizing).
+     * 获取到桶内第一个节点这个锁之后，需要首先验证获取到的锁是第一个节点，因为第一个节点可能会被删除掉；还有就是扩容后桶会失效，桶内的第一个节点可能会变。
+     * 对每个桶加锁的主要缺点是 当对一个桶内的其它节点进行更新操作时也会被这个锁保护(例如两个线程同时更新一个桶内的两个不同节点，后续线程会被阻塞)，不过这种概率比较低，不用过于考虑这种情况。
      *
      * The main disadvantage of per-bin locks is that other update
      * operations on other nodes in a bin list protected by the same
@@ -350,6 +356,9 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      *
      * Lock contention probability for two threads accessing distinct
      * elements is roughly 1 / (8 * #elements) under random hashes.
+     *
+     * 一个bin里散列冲突的节点个数（包含头结点）k符合泊松分布，k等于8的概率为一亿分之六，k大于8的概率小于千万分之一
+     * 换句话说，单向链表需要转换为红黑树的概率是非常低的。保证了写入和查询的效率几乎等于O(1)，即常数时间的复杂度
      *
      * Actual hash code distributions encountered in practice
      * sometimes deviate significantly from uniform randomness.  This
@@ -525,6 +534,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     /**
      * The default concurrency level for this table. Unused but
      * defined for compatibility with previous versions of this class.
+     * 已经不使用。
      */
     private static final int DEFAULT_CONCURRENCY_LEVEL = 16;
 
@@ -615,6 +625,8 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * in bulk tasks.  Subclasses of Node with a negative hash field
      * are special, and contain null keys and values (but are never
      * exported).  Otherwise, keys and vals are never null.
+     *
+     * <p>{@code val}和{@code next}都加了volatile关键字
      */
     static class Node<K,V> implements Map.Entry<K,V> {
         final int hash;
@@ -1015,7 +1027,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         // 这里使用的是一个无限for循环，插入或更新节点成功后才会退出循环
         // 之所以使用一个无限for循环，更多的考虑是保证并发场景下插入或更新成功
         // 例如，线程A和线程B一起操作一个空数组，线程A初始化数组成功，然后在for循环的下一次迭代中插入数据(key1,val1)；
-        // 如果此时线程B还没有插入数据(key2,val2)，并且key1和key2的散列码相同，因为CAS操作，val2是不会覆盖val1的，
+        // 如果此时线程B还没有插入数据(key2,val2)，并且key1和key2的得到的table下标i相同，因为CAS操作，val2是不会覆盖val1的，
         // 会在for循环的下次迭代中通过单向链表解决散列冲突。这样就保证了并发操作的正确。
         for (Node<K,V>[] tab = table;;) {
             Node<K,V> f; int n, i, fh;
@@ -1023,7 +1035,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 // 第一次插入，初始化数组，CAS操作保证在并发情况下只会有一个线程对数组进行初始化
                 tab = initTable();
             else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
-                // 使用CAS操作把一个节点放到tab数组一个下标处，作为这个位置的桶内的第一个节点
+                // 使用CAS操作把一个节点放到tab数组下标i处，作为这个位置的桶内的第一个节点
                 if (casTabAt(tab, i, null,
                              new Node<K,V>(hash, key, value, null)))
                     break;                   // no lock when adding to empty bin
@@ -1039,6 +1051,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         if (fh >= 0) {
                             binCount = 1;
                             // 无限for循环，只有插入或更新成功后才退出循环
+                            // 注意：因为break后直接跳出for循环，++binCount不会再执行，所以这里的binCount包含头结点，但是不包含加入的新节点
                             for (Node<K,V> e = f;; ++binCount) {
                                 K ek;
                                 if (e.hash == hash &&
@@ -1071,7 +1084,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     }
                 }
                 if (binCount != 0) {
-                    // 桶内节点的个数(不包含头结点)大或等于TREEIFY_THRESHOLD(8)时，单向链表转为红黑树
+                    // 因为binCount不包含加入的新节点，所以，当binCount达到TREEIFY_THRESHOLD(8)时，bin内节点的数量为9，即当bin内所有节点数量达到9时，将链表转换为红黑树
                     if (binCount >= TREEIFY_THRESHOLD)
                         treeifyBin(tab, i);
                     if (oldVal != null)
@@ -2252,6 +2265,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         @SuppressWarnings("unchecked")
                         Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n];
                         table = tab = nt;
+                        // 相当于sc=n*0.75f
                         sc = n - (n >>> 2);
                     }
                 } finally {
@@ -2630,6 +2644,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     private final void treeifyBin(Node<K,V>[] tab, int index) {
         Node<K,V> b; int n, sc;
         if (tab != null) {
+            // 如果table的长度小于64，直接扩容
             if ((n = tab.length) < MIN_TREEIFY_CAPACITY)
                 tryPresize(n << 1);
             else if ((b = tabAt(tab, index)) != null && b.hash >= 0) {

@@ -489,7 +489,7 @@ public class Object {
      * re-obtain ownership of the monitor and resumes execution.
      * <p>当前线程必须先拥有object的monitor（一般用synchronized关键字获取对象的monitor lock），
      * 然后才能调用object的{@code wait}方法，否则会抛出{@link IllegalMonitorStateException}，
-     * 调用{@code wait}方法之后，把当前线程放入到object的wait set，然后释放object monitor的所有权，当前线程被阻塞，禁止对其进行线程调度，直到其它线程通过调用object的
+     * 调用{@code wait}方法之后，把当前线程放入到object的wait set，然后释放this object monitor的所有权，当前线程被阻塞，禁止对其进行线程调度，直到其它线程通过调用object的
      * {@link #notify()}或者{@link #notifyAll()}方法进行唤醒。当前线程被唤醒之后，从object的wait set中移除，然后尝试重新获取monitor，获取成功
      * 之后，该wait方法立刻返回。如果获取monitor失败，继续阻塞等待，直到获取成功。这些内容在{@link #wait(long)}方法的注释上已经写的非常清楚。
      *
