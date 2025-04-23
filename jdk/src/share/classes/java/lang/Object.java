@@ -142,7 +142,7 @@ public class Object {
      * method whenever this method is overridden, so as to maintain the
      * general contract for the {@code hashCode} method, which states
      * that equal objects must have equal hash codes.
-     * <p>每当equals方法被重写时，通常需要重写hashcode方法，以便维护hashcode方法的通用约定，即相等的对象总是有相等的hash值。
+     * <p>每当equals方法被重写时，通常需要重写hashCode方法，以便维护hashCode方法的通用约定，即相等的对象总是有相等的hash值。
      * 比如，{@link java.util.HashMap#put(Object key, Object value)}在解决散列冲突前，总是先比较{@link java.util.HashMap#hash(Object)}，
      * 然后比较equals方法，都相等时才判定为相等。
      *
